@@ -1,17 +1,45 @@
-# aplikasi_keuangan_mahasiswa
+# 💰 Aplikasi Keuangan Mahasiswa
 
-A new Flutter project.
+Aplikasi manajemen keuangan berbasis mobile yang dirancang khusus untuk membantu mahasiswa dalam mencatat pendapatan, pengeluaran, serta mengelola anggaran bulanan secara mandiri dan teratur.
 
-## Getting Started
+## ✨ Fitur Utama
+* **Pencatatan Transaksi:** Mencatat pemasukan dan pengeluaran harian.
+* **Kategori Kustom:** Pengelompokan pengeluaran (misal: kos, makanan, buku, hiburan).
+* **Laporan Keuangan:** Grafik ringkasan pengeluaran bulanan.
 
-This project is a starting point for a Flutter application.
+## 🛠️ Dibuat Menggunakan
+* **Framework:** [Flutter](https://flutter.dev) (Dart)
+* **Sistem Operasi Pengembangan:** Parrot OS (Linux)
 
-A few resources to get you started if this is your first Flutter project:
+## 🚀 Cara Menjalankan Proyek Secara Lokal
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+Ikuti langkah-langkah berikut untuk menjalankan aplikasi ini di komputer Anda:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+### Prerequisites (Prasyarat)
+Pastikan Anda sudah menginstal Flutter SDK di perangkat Anda. Jika belum, ikuti [Panduan Instalasi Flutter](https://flutter.dev).
+
+### Langkah-Langkah
+
+1. **Clone Repositori ini:**
+   ```bash
+   git clone https://github.com
+   ```
+
+2. **Masuk ke Direktori Proyek:**
+   ```bash
+   cd aplikasi_keuangan_mahasiswa
+   ```
+
+3. **Unduh Dependencies/Packages:**
+   ```bash
+   flutter pub get
+   ```
+
+4. **Jalankan Aplikasi:**
+   Hubungkan emulator atau perangkat fisik Anda, lalu jalankan:
+   ```bash
+   flutter run
+   ```
+
+---
+Dibuat dengan ❤️ oleh [ahmadkausar2003](https://github.com)
