@@ -1,0 +1,400 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../providers/transaction_provider.dart';
+import '../../data/models/transaction_model.dart';
+
+class TransactionScreen extends ConsumerStatefulWidget {
+  const TransactionScreen({super.key});
+
+  @override
+  ConsumerState<TransactionScreen> createState() => _TransactionScreenState();
+}
+
+class _TransactionScreenState extends ConsumerState<TransactionScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _titleController = TextEditingController();
+  final _amountController = TextEditingController();
+  final _locationController = TextEditingController(); // Controller Lokasi Baru
+
+  String _selectedType = 'expense';
+  DateTime _selectedDate = DateTime.now();
+  File? _receiptImage; // Menyimpan file foto struk
+
+  final List<String> _expenseCategories = ['Makanan', 'Kos', 'Transportasi', 'Tugas Kuliah', 'Nongkrong', 'Lainnya'];
+  final List<String> _incomeCategories = ['Uang Saku', 'Gaji Part-time', 'Bonus', 'Lainnya'];
+  
+  late String _selectedCategory;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedCategory = _expenseCategories.first;
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _amountController.dispose();
+    _locationController.dispose();
+    super.dispose();
+  }
+
+  // --- FUNGSI KAMERA & GALERI ---
+  Future<void> _pickImage(ImageSource source) async {
+    final picker = ImagePicker();
+    try {
+      final pickedFile = await picker.pickImage(
+        source: source,
+        imageQuality: 70, // Kompresi agar database tidak bengkak
+      );
+      
+      if (pickedFile != null) {
+        setState(() {
+          _receiptImage = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      debugPrint("Error picking image: $e");
+    }
+  }
+
+  Future<void> _saveTransaction() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final amountText = _amountController.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final amount = double.tryParse(amountText);
+
+    if (amount == null || amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nominal harus lebih dari Rp 0')),
+      );
+      return;
+    }
+
+    final newTransaction = TransactionModel(
+      title: _titleController.text.trim(),
+      amount: amount,
+      type: _selectedType,
+      category: _selectedCategory,
+      date: _selectedDate,
+      location: _locationController.text.trim().isEmpty ? null : _locationController.text.trim(),
+      imagePath: _receiptImage?.path, // Menyimpan path lokal foto
+    );
+
+    await ref.read(transactionProvider.notifier).addTransaction(newTransaction);
+
+    if (!mounted) return;
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$_selectedCategory berhasil dicatat!'),
+        backgroundColor: const Color(0xFF10B981),
+      ),
+    );
+    Navigator.pop(context);
+  }
+
+  Future<void> _pickDate() async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+
+    if (pickedDate != null && pickedDate != _selectedDate) {
+      setState(() {
+        _selectedDate = pickedDate;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isIncome = _selectedType == 'income';
+    final activeColor = isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Tambah Transaksi'),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 1. Tipe Transaksi
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                        value: 'expense',
+                        label: Text('Pengeluaran'),
+                        icon: Icon(Icons.arrow_upward_rounded),
+                      ),
+                      ButtonSegment(
+                        value: 'income',
+                        label: Text('Pemasukan'),
+                        icon: Icon(Icons.arrow_downward_rounded),
+                      ),
+                    ],
+                    selected: {_selectedType},
+                    onSelectionChanged: (Set<String> newSelection) {
+                      setState(() {
+                        _selectedType = newSelection.first;
+                        _selectedCategory = _selectedType == 'expense' 
+                            ? _expenseCategories.first 
+                            : _incomeCategories.first;
+                      });
+                    },
+                    style: SegmentedButton.styleFrom(
+                      selectedForegroundColor: Colors.white,
+                      selectedBackgroundColor: activeColor,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+
+                // 2. Input Nominal
+                Text('Nominal', style: theme.textTheme.titleMedium),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _amountController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  style: theme.textTheme.headlineLarge?.copyWith(fontSize: 28),
+                  decoration: InputDecoration(
+                    prefixText: 'Rp ',
+                    prefixStyle: theme.textTheme.headlineLarge?.copyWith(fontSize: 28, color: Colors.grey),
+                    hintText: '0',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: theme.brightness == Brightness.light 
+                        ? const Color(0xFFF1F5F9) 
+                        : const Color(0xFF1E293B),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                  ),
+                  validator: (value) => (value == null || value.isEmpty) ? 'Nominal tidak boleh kosong' : null,
+                ),
+                const SizedBox(height: 24),
+
+                // 3. Input Judul / Catatan
+                Text('Catatan / Judul', style: theme.textTheme.titleMedium),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _titleController,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: InputDecoration(
+                    hintText: isIncome ? 'Contoh: Transfer dari Ibu' : 'Contoh: Makan Siang di Kantin',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: theme.brightness == Brightness.light 
+                        ? const Color(0xFFF1F5F9) 
+                        : const Color(0xFF1E293B),
+                  ),
+                  validator: (value) => (value == null || value.trim().isEmpty) ? 'Judul transaksi wajib diisi' : null,
+                ),
+                const SizedBox(height: 24),
+
+                // 4. Input Lokasi (Opsional)
+                Text('Lokasi (Opsional)', style: theme.textTheme.titleMedium),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _locationController,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: InputDecoration(
+                    hintText: 'Contoh: Warteg Berkah',
+                    prefixIcon: const Icon(Icons.location_on_outlined),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: theme.brightness == Brightness.light 
+                        ? const Color(0xFFF1F5F9) 
+                        : const Color(0xFF1E293B),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // 5. Kategori & Tanggal
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Kategori', style: theme.textTheme.titleMedium),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            decoration: BoxDecoration(
+                              color: theme.brightness == Brightness.light 
+                                  ? const Color(0xFFF1F5F9) 
+                                  : const Color(0xFF1E293B),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _selectedCategory,
+                                isExpanded: true,
+                                items: (isIncome ? _incomeCategories : _expenseCategories)
+                                    .map((String category) {
+                                  return DropdownMenuItem<String>(
+                                    value: category,
+                                    child: Text(category),
+                                  );
+                                }).toList(),
+                                onChanged: (String? newValue) {
+                                  if (newValue != null) {
+                                    setState(() => _selectedCategory = newValue);
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Tanggal', style: theme.textTheme.titleMedium),
+                          const SizedBox(height: 8),
+                          InkWell(
+                            onTap: _pickDate,
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+                              decoration: BoxDecoration(
+                                color: theme.brightness == Brightness.light 
+                                    ? const Color(0xFFF1F5F9) 
+                                    : const Color(0xFF1E293B),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    DateFormat('dd MMM').format(_selectedDate),
+                                    style: theme.textTheme.bodyLarge,
+                                  ),
+                                  const Icon(Icons.calendar_today, size: 18),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // 6. Unggah Struk / Bukti (Opsional)
+                Text('Bukti Transaksi (Opsional)', style: theme.textTheme.titleMedium),
+                const SizedBox(height: 8),
+                if (_receiptImage != null)
+                  Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Image.file(
+                          _receiptImage!,
+                          width: double.infinity,
+                          height: 200,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: CircleAvatar(
+                          backgroundColor: Colors.black54,
+                          child: IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.white),
+                            onPressed: () => setState(() => _receiptImage = null),
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _pickImage(ImageSource.camera),
+                          icon: const Icon(Icons.camera_alt_outlined),
+                          label: const Text('Kamera'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _pickImage(ImageSource.gallery),
+                          icon: const Icon(Icons.image_outlined),
+                          label: const Text('Galeri'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                const SizedBox(height: 48),
+
+                // 7. Tombol Simpan
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: _saveTransaction,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: theme.colorScheme.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'Simpan Transaksi',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
