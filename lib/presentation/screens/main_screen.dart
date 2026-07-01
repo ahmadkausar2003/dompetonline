@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import 'dashboard_screen.dart';
+import 'history_screen.dart'; 
 import 'statistics_screen.dart';
 import 'budget_screen.dart';
+import 'profile_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -14,13 +16,13 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
 
-  // Daftar layar yang akan ditampilkan berdasarkan tab yang dipilih
+  // Daftar 5 Layar Utama Aplikasi Kita
   final List<Widget> _screens = [
     const DashboardScreen(),
-    const StatisticsScreen(),
-    const BudgetScreen(), // Mengganti placeholder dengan layar sebenarnya
-    // Placeholder untuk layar Profile/Settings (Akan kita buat selanjutnya)
-    const Scaffold(body: Center(child: Text('Layar Profil (Segera Hadir)'))),
+    const HistoryScreen(),     
+    const StatisticsScreen(),  
+    const BudgetScreen(),      
+    const ProfileScreen(),     
   ];
 
   @override
@@ -28,12 +30,10 @@ class _MainScreenState extends State<MainScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      // IndexedStack digunakan agar state (seperti posisi scroll) tiap layar tidak hilang saat pindah tab
       body: IndexedStack(
         index: _selectedIndex,
         children: _screens,
       ),
-      // Menggunakan NavigationBar standar Material 3
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
@@ -43,11 +43,17 @@ class _MainScreenState extends State<MainScreen> {
         },
         backgroundColor: theme.colorScheme.surface,
         indicatorColor: theme.colorScheme.primary.withValues(alpha: 0.2),
+        labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.dashboard_outlined),
             selectedIcon: Icon(Icons.dashboard),
-            label: 'Beranda',
+            label: 'Dasbor',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long),
+            label: 'Rekapan',
           ),
           NavigationDestination(
             icon: Icon(Icons.pie_chart_outline),

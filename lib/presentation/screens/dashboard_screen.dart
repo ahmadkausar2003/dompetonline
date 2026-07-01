@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -65,7 +66,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             ),
                           ),
                           Text(
-                            'Data lain di Rekapan',
+                            'Lainnya di Rekapan',
                             style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
                           ),
                         ],
@@ -125,7 +126,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Saldo Utama', // Teks diperbarui
+            'Saldo Utama',
             style: TextStyle(
               color: Colors.white70,
               fontSize: 14,
@@ -261,78 +262,212 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final isIncome = transaction.type == 'income';
     final amountColor = isIncome ? const Color(0xFF10B981) : theme.textTheme.titleMedium?.color;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-      decoration: BoxDecoration(
-        color: theme.cardTheme.color,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.brightness == Brightness.light 
-              ? const Color(0xFFF1F5F9) 
-              : const Color(0xFF1E293B),
+    // Membungkus dengan InkWell agar bisa diklik
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => _showTransactionDetails(context, transaction), // Memanggil fungsi pop-up detail
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+        decoration: BoxDecoration(
+          color: theme.cardTheme.color,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: theme.brightness == Brightness.light 
+                ? const Color(0xFFF1F5F9) 
+                : const Color(0xFF1E293B),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isIncome 
+                    ? const Color(0xFF10B981).withValues(alpha: 0.1) 
+                    : theme.primaryColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                _getCategoryIcon(transaction.category),
+                color: isIncome ? const Color(0xFF10B981) : theme.primaryColor,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    transaction.title,
+                    style: theme.textTheme.titleMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text(
+                        transaction.category,
+                        style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13),
+                      ),
+                      if (transaction.location != null) ...[
+                        const SizedBox(width: 8),
+                        const Icon(Icons.location_on, size: 12, color: Colors.grey),
+                      ],
+                      if (transaction.imagePath != null) ...[
+                        const SizedBox(width: 4),
+                        const Icon(Icons.image, size: 12, color: Colors.grey),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              '${isIncome ? '+' : '-'}${_currencyFormat.format(transaction.amount)}',
+              style: TextStyle(
+                color: amountColor,
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+                letterSpacing: -0.5,
+              ),
+            ),
+          ],
         ),
       ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isIncome 
-                  ? const Color(0xFF10B981).withValues(alpha: 0.1) 
-                  : theme.primaryColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              _getCategoryIcon(transaction.category),
-              color: isIncome ? const Color(0xFF10B981) : theme.primaryColor,
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  transaction.title,
-                  style: theme.textTheme.titleMedium,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                // Indikator visual jika ada lokasi atau foto
-                Row(
-                  children: [
-                    Text(
-                      transaction.category,
-                      style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13),
-                    ),
-                    if (transaction.location != null) ...[
-                      const SizedBox(width: 8),
-                      const Icon(Icons.location_on, size: 12, color: Colors.grey),
-                    ],
-                    if (transaction.imagePath != null) ...[
-                      const SizedBox(width: 4),
-                      const Icon(Icons.image, size: 12, color: Colors.grey),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            '${isIncome ? '+' : '-'}${_currencyFormat.format(transaction.amount)}',
-            style: TextStyle(
-              color: amountColor,
-              fontWeight: FontWeight.w700,
-              fontSize: 15,
-              letterSpacing: -0.5,
-            ),
-          ),
-        ],
+    );
+  }
+
+  // Pop-up Detail Transaksi (termasuk fitur Hapus)
+  void _showTransactionDetails(BuildContext context, TransactionModel transaction) {
+    final theme = Theme.of(context);
+    final isIncome = transaction.type == 'income';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: theme.scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          maxChildSize: 0.9,
+          minChildSize: 0.4,
+          expand: false,
+          builder: (context, scrollController) {
+            return SingleChildScrollView(
+              controller: scrollController,
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Center(
+                    child: Text(
+                      transaction.title,
+                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Text(
+                      '${isIncome ? '+' : '-'}${_currencyFormat.format(transaction.amount)}',
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                        letterSpacing: -1.0,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  _buildDetailRow(context, 'Kategori', transaction.category, Icons.category_outlined),
+                  const SizedBox(height: 16),
+                  _buildDetailRow(context, 'Tanggal', DateFormat('dd MMMM yyyy, HH:mm').format(transaction.date), Icons.calendar_today),
+                  
+                  if (transaction.location != null) ...[
+                    const SizedBox(height: 16),
+                    _buildDetailRow(context, 'Lokasi', transaction.location!, Icons.location_on_outlined),
+                  ],
+
+                  if (transaction.imagePath != null) ...[
+                    const SizedBox(height: 24),
+                    Text('Bukti Transaksi', style: theme.textTheme.titleMedium),
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.file(
+                        File(transaction.imagePath!),
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            height: 150,
+                            color: Colors.grey.withValues(alpha: 0.2),
+                            child: const Center(child: Text('Gambar tidak ditemukan / dihapus')),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 32),
+                  // TOMBOL HAPUS TRANSAKSI
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        await ref.read(transactionProvider.notifier).deleteTransaction(transaction.id!);
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Transaksi berhasil dihapus')),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Hapus Transaksi'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFEF4444),
+                        side: const BorderSide(color: Color(0xFFEF4444)),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailRow(BuildContext context, String label, String value, IconData icon) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(icon, color: Colors.grey, size: 20),
+        const SizedBox(width: 12),
+        Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey)),
+        const Spacer(),
+        Text(value, style: theme.textTheme.titleMedium),
+      ],
     );
   }
 
