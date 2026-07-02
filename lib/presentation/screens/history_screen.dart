@@ -24,7 +24,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     decimalDigits: 0,
   );
 
-  Future<void> _exportAndSharePDF(List<TransactionModel> transactions, double totalIncome, double totalExpense) async {
+  Future<void> _exportAndSharePDF(List<TransactionModel> transactions) async {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -33,6 +33,26 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
     try {
       final pdf = pw.Document();
+
+      // Memisahkan transaksi harian (Dasbor) dan transaksi sistem (Target/Darurat)
+      final regularTransactions = transactions.where((t) => 
+          t.category != 'Tabungan' && t.category != 'Darurat').toList();
+          
+      final targetTransactions = transactions.where((t) => 
+          t.category == 'Tabungan' || t.category == 'Darurat').toList();
+
+      // Menghitung total khusus untuk ringkasan di bawah
+      double totalIncome = 0.0;
+      double totalExpense = 0.0;
+      double totalDarurat = 0.0;
+
+      for (var t in transactions) {
+        if (t.type == 'income') totalIncome += t.amount;
+        if (t.type == 'expense') totalExpense += t.amount;
+        if (t.category == 'Darurat' && t.type == 'expense') {
+          totalDarurat += t.amount;
+        }
+      }
       
       pdf.addPage(
         pw.MultiPage(
@@ -40,38 +60,90 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           margin: const pw.EdgeInsets.all(32),
           build: (pw.Context context) {
             return [
+              // HEADER LAPORAN
               pw.Header(
                 level: 0,
                 child: pw.Text('Laporan Transaksi Keuangan - SmartStudent Finance', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
               ),
               pw.SizedBox(height: 10),
               pw.Text('Tanggal Cetak: ${DateFormat('dd MMMM yyyy HH:mm').format(DateTime.now())}'),
-              pw.SizedBox(height: 20),
+              pw.SizedBox(height: 30),
               
+              // BAGIAN 1: TABEL TRANSAKSI HARIAN (DASBOR)
+              pw.Text('1. Riwayat Transaksi Harian (Dasbor)', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 10),
+              if (regularTransactions.isEmpty)
+                pw.Text('Tidak ada transaksi harian pada periode ini.', style: const pw.TextStyle(color: PdfColors.grey))
+              else
+                pw.TableHelper.fromTextArray(
+                  context: context,
+                  headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                  headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey800),
+                  cellAlignment: pw.Alignment.centerLeft,
+                  data: <List<String>>[
+                    <String>['Tanggal', 'Judul', 'Kategori', 'Tipe', 'Nominal'],
+                    ...regularTransactions.map((t) => [
+                          DateFormat('dd/MM/yyyy').format(t.date),
+                          t.title,
+                          t.category,
+                          t.type == 'income' ? 'Masuk' : 'Keluar',
+                          _currencyFormat.format(t.amount),
+                        ]),
+                  ],
+                ),
+              pw.SizedBox(height: 30),
+
+              // BAGIAN 2: TABEL TRANSAKSI TARGET & DARURAT
+              pw.Text('2. Riwayat Tabungan & Dana Darurat', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 10),
+              if (targetTransactions.isEmpty)
+                pw.Text('Tidak ada aktivitas tabungan atau dana darurat.', style: const pw.TextStyle(color: PdfColors.grey))
+              else
+                pw.TableHelper.fromTextArray(
+                  context: context,
+                  headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                  headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo800), // Warna header berbeda
+                  cellAlignment: pw.Alignment.centerLeft,
+                  data: <List<String>>[
+                    <String>['Tanggal', 'Judul', 'Kategori', 'Tipe', 'Nominal'],
+                    ...targetTransactions.map((t) => [
+                          DateFormat('dd/MM/yyyy').format(t.date),
+                          t.title,
+                          t.category,
+                          t.type == 'income' ? 'Masuk' : 'Keluar',
+                          _currencyFormat.format(t.amount),
+                        ]),
+                  ],
+                ),
+              pw.SizedBox(height: 40),
+
+              // BAGIAN 3: RINGKASAN TOTAL (DI BAWAH)
+              pw.Divider(),
+              pw.SizedBox(height: 10),
+              pw.Text('Ringkasan Keuangan', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 15),
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text('Total Pemasukan: ${_currencyFormat.format(totalIncome)}', style: pw.TextStyle(color: PdfColors.green)),
-                  pw.Text('Total Pengeluaran: ${_currencyFormat.format(totalExpense)}', style: pw.TextStyle(color: PdfColors.red)),
+                  pw.Text('Total Pemasukan Keseluruhan:', style: const pw.TextStyle(fontSize: 12)),
+                  pw.Text(_currencyFormat.format(totalIncome), style: pw.TextStyle(fontSize: 12, color: PdfColors.green, fontWeight: pw.FontWeight.bold)),
                 ]
               ),
-              pw.SizedBox(height: 20),
-
-              pw.TableHelper.fromTextArray(
-                context: context,
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey800),
-                cellAlignment: pw.Alignment.centerLeft,
-                data: <List<String>>[
-                  <String>['Tanggal', 'Judul', 'Kategori', 'Tipe', 'Nominal'],
-                  ...transactions.map((t) => [
-                        DateFormat('dd/MM/yyyy').format(t.date),
-                        t.title,
-                        t.category,
-                        t.type == 'income' ? 'Masuk' : 'Keluar',
-                        _currencyFormat.format(t.amount),
-                      ]),
-                ],
+              pw.SizedBox(height: 8),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('Total Pengeluaran Keseluruhan:', style: const pw.TextStyle(fontSize: 12)),
+                  pw.Text(_currencyFormat.format(totalExpense), style: pw.TextStyle(fontSize: 12, color: PdfColors.red, fontWeight: pw.FontWeight.bold)),
+                ]
+              ),
+              pw.SizedBox(height: 8),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('Total Penarikan Dana Darurat:', style: const pw.TextStyle(fontSize: 12)),
+                  pw.Text(_currencyFormat.format(totalDarurat), style: pw.TextStyle(fontSize: 12, color: PdfColors.orange, fontWeight: pw.FontWeight.bold)),
+                ]
               ),
             ];
           },
@@ -105,13 +177,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final state = ref.watch(transactionProvider);
     final theme = Theme.of(context);
 
-    double totalIncome = 0.0;
-    double totalExpense = 0.0;
-    for (var t in state.allTransactions) {
-      if (t.type == 'income') totalIncome += t.amount;
-      if (t.type == 'expense') totalExpense += t.amount;
-    }
-
     return DefaultTabController(
       length: 3,
       child: Scaffold(
@@ -121,7 +186,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             IconButton(
               icon: const Icon(Icons.picture_as_pdf_outlined),
               tooltip: 'Bagikan ke WhatsApp (PDF)',
-              onPressed: () => _exportAndSharePDF(state.allTransactions, totalIncome, totalExpense),
+              onPressed: () => _exportAndSharePDF(state.allTransactions), // Tidak perlu passing total lagi karena dihitung di dalam PDF
             ),
             const SizedBox(width: 8),
           ],
@@ -174,7 +239,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
-  // LOGIKA WARNA & IKON JUGA DIPERBAIKI DI REKAPAN
   Widget _buildTransactionItem(BuildContext context, TransactionModel transaction) {
     final theme = Theme.of(context);
     final isIncome = transaction.type == 'income';
@@ -263,6 +327,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final isIncome = transaction.type == 'income';
     final itemColor = isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444);
 
+    final isSystemTransaction = transaction.category == 'Darurat' || 
+                                transaction.category == 'Tabungan' || 
+                                transaction.title.startsWith('Pencairan') ||
+                                transaction.title.startsWith('Batal Target');
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -298,6 +367,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                     child: Text(
                       transaction.title,
                       style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -344,27 +414,52 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   ],
                   
                   const SizedBox(height: 32),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        await ref.read(transactionProvider.notifier).deleteTransaction(transaction.id!);
-                        if (context.mounted) {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Transaksi berhasil dihapus')),
-                          );
-                        }
-                      },
-                      icon: const Icon(Icons.delete_outline),
-                      label: const Text('Hapus Transaksi'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFFEF4444),
-                        side: const BorderSide(color: Color(0xFFEF4444)),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                  
+                  // LOGIKA PELINDUNG HAPUS TRANSAKSI SISTEM
+                  if (isSystemTransaction)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF59E0B).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline_rounded, color: Color(0xFFF59E0B)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Riwayat otomatis dari fitur Target Tabungan. Penghapusan manual dinonaktifkan untuk menjaga akurasi saldo.',
+                              style: theme.textTheme.bodyMedium?.copyWith(color: const Color(0xFFB45309)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          await ref.read(transactionProvider.notifier).deleteTransaction(transaction.id!);
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Transaksi berhasil dihapus')),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Hapus Transaksi'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFFEF4444),
+                          side: const BorderSide(color: Color(0xFFEF4444)),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
             );
@@ -397,6 +492,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       case 'uang saku': return Icons.account_balance_wallet_rounded;
       case 'gaji part-time': return Icons.work_rounded;
       case 'bonus': return Icons.card_giftcard_rounded;
+      case 'darurat': return Icons.warning_rounded; 
+      case 'tabungan': return Icons.savings_rounded; 
       case 'lainnya': return Icons.category_rounded;
       default: return Icons.receipt_long_rounded;
     }

@@ -8,7 +8,6 @@ import '../providers/transaction_provider.dart';
 import '../../data/models/transaction_model.dart';
 import 'transaction_screen.dart';
 
-// --- CUSTOM FORMATTER UNTUK RIBUAN RUPIAH ---
 class CurrencyInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
@@ -18,13 +17,10 @@ class CurrencyInputFormatter extends TextInputFormatter {
     if (newValue.text.isEmpty) {
       return newValue.copyWith(text: '');
     }
-
     String numericOnly = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-    
     if (numericOnly.isEmpty) {
       return newValue.copyWith(text: '');
     }
-
     final formatter = NumberFormat.decimalPattern('id_ID');
     String newText = formatter.format(int.parse(numericOnly));
 
@@ -49,7 +45,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     decimalDigits: 0,
   );
 
-  // Dialog untuk mengedit Saldo Rekening Manual
   void _showEditBankBalance(BuildContext context, WidgetRef ref, double currentBalance) {
     final initialText = currentBalance == 0 
         ? '' 
@@ -398,12 +393,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  // LOGIKA WARNA & IKON SUDAH DIPERBAIKI DI SINI
   Widget _buildTransactionItem(BuildContext context, TransactionModel transaction) {
     final theme = Theme.of(context);
     final isIncome = transaction.type == 'income';
-    
-    // Warna Dinamis: Hijau untuk Pemasukan, Merah untuk Pengeluaran
     final itemColor = isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444);
 
     return InkWell(
@@ -431,7 +423,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
               child: Icon(
                 _getCategoryIcon(transaction.category),
-                color: itemColor, // Ikon sekarang akan mengikuti warna Hijau/Merah dengan presisi
+                color: itemColor,
                 size: 24,
               ),
             ),
@@ -470,7 +462,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             Text(
               '${isIncome ? '+' : '-'}${_currencyFormat.format(transaction.amount)}',
               style: TextStyle(
-                color: itemColor, // Angka pengeluaran kini berwarna merah
+                color: itemColor,
                 fontWeight: FontWeight.w800,
                 fontSize: 15,
                 letterSpacing: -0.5,
@@ -486,6 +478,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final theme = Theme.of(context);
     final isIncome = transaction.type == 'income';
     final itemColor = isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+
+    final isSystemTransaction = transaction.category == 'Darurat' || 
+                                transaction.category == 'Tabungan' || 
+                                transaction.title.startsWith('Pencairan') ||
+                                transaction.title.startsWith('Batal Target');
 
     showModalBottomSheet(
       context: context,
@@ -522,6 +519,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     child: Text(
                       transaction.title,
                       style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -568,27 +566,51 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   ],
 
                   const SizedBox(height: 32),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        await ref.read(transactionProvider.notifier).deleteTransaction(transaction.id!);
-                        if (context.mounted) {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Transaksi berhasil dihapus')),
-                          );
-                        }
-                      },
-                      icon: const Icon(Icons.delete_outline),
-                      label: const Text('Hapus Transaksi'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFFEF4444),
-                        side: const BorderSide(color: Color(0xFFEF4444)),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                  
+                  if (isSystemTransaction)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF59E0B).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline_rounded, color: Color(0xFFF59E0B)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Riwayat otomatis dari fitur Target Tabungan. Penghapusan manual dinonaktifkan untuk menjaga akurasi saldo.',
+                              style: theme.textTheme.bodyMedium?.copyWith(color: const Color(0xFFB45309)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          await ref.read(transactionProvider.notifier).deleteTransaction(transaction.id!);
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Transaksi berhasil dihapus')),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Hapus Transaksi'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFFEF4444),
+                          side: const BorderSide(color: Color(0xFFEF4444)),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
             );
@@ -611,7 +633,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  // MAPPING IKON BARU YANG LEBIH LENGKAP & MODERN
   IconData _getCategoryIcon(String category) {
     switch (category.toLowerCase()) {
       case 'makanan': return Icons.restaurant_rounded;
@@ -622,6 +643,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       case 'uang saku': return Icons.account_balance_wallet_rounded;
       case 'gaji part-time': return Icons.work_rounded;
       case 'bonus': return Icons.card_giftcard_rounded;
+      case 'darurat': return Icons.warning_rounded; // Ikon Darurat
+      case 'tabungan': return Icons.savings_rounded; // Ikon Tabungan
       case 'lainnya': return Icons.category_rounded;
       default: return Icons.receipt_long_rounded;
     }
