@@ -92,10 +92,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       if (!mounted) return;
       Navigator.pop(context); // Tutup Loading
 
-      // Bagikan file PDF ke WhatsApp / Aplikasi Lain
-      await Share.shareXFiles(
-        [XFile(file.path)], 
-        text: 'Halo! Berikut adalah rekapan transaksi keuangan saya dari aplikasi SmartStudent Finance. 📄',
+      // Bagikan file PDF ke WhatsApp / Aplikasi Lain menggunakan sintaks modern share_plus
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path)],
+          text: 'Halo! Berikut adalah rekapan transaksi keuangan saya dari aplikasi SmartStudent Finance. 📄',
+        ),
       );
 
     } catch (e) {

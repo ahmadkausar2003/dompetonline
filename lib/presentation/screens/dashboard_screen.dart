@@ -24,9 +24,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   // Dialog untuk mengedit Saldo Rekening Manual
   void _showEditBankBalance(BuildContext context, WidgetRef ref, double currentBalance) {
-    final controller = TextEditingController(
-      text: currentBalance == 0 ? '' : currentBalance.toInt().toString()
-    );
+    // Format teks awal agar saat dialog terbuka sudah ada titik ribuannya
+    final initialText = currentBalance == 0 
+        ? '' 
+        : NumberFormat.decimalPattern('id_ID').format(currentBalance.toInt());
+        
+    final controller = TextEditingController(text: initialText);
     final formKey = GlobalKey<FormState>();
 
     showDialog(
@@ -38,7 +41,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           child: TextFormField(
             controller: controller,
             keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            // Hapus digitsOnly, dan gunakan CurrencyInputFormatter kustom kita
+            inputFormatters: [
+              CurrencyInputFormatter(),
+            ],
             decoration: const InputDecoration(
               labelText: 'Nominal Saldo Saat Ini',
               prefixText: 'Rp ',
@@ -58,7 +64,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           FilledButton(
             onPressed: () {
               if (formKey.currentState!.validate()) {
-                final newBalance = double.tryParse(controller.text) ?? 0.0;
+                // Hapus semua karakter non-angka (seperti titik) sebelum diparse
+                final cleanText = controller.text.replaceAll(RegExp(r'[^0-9]'), '');
+                final newBalance = double.tryParse(cleanText) ?? 0.0;
+                
                 ref.read(transactionProvider.notifier).updateBankBalance(newBalance);
                 Navigator.pop(context);
               }
@@ -593,5 +602,35 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       case 'pemasukan': return Icons.account_balance_wallet;
       default: return Icons.receipt_long;
     }
+  }
+}
+
+/// Custom formatter untuk menambahkan titik pemisah ribuan secara real-time
+class CurrencyInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (newValue.text.isEmpty) {
+      return newValue.copyWith(text: '');
+    }
+
+    // Hanya ambil karakter angka murni
+    String numericOnly = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    
+    if (numericOnly.isEmpty) {
+      return newValue.copyWith(text: '');
+    }
+
+    // Format angka menggunakan titik ribuan bergaya Indonesia (id_ID)
+    final formatter = NumberFormat.decimalPattern('id_ID');
+    String newText = formatter.format(int.parse(numericOnly));
+
+    // Kembalikan value dengan penempatan kursor di akhir text
+    return newValue.copyWith(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newText.length),
+    );
   }
 }

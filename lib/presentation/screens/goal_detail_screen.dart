@@ -6,7 +6,38 @@ import 'package:intl/intl.dart';
 import '../providers/goal_provider.dart';
 import '../providers/transaction_provider.dart';
 import '../../core/database/db_helper.dart';
-import '../../data/models/goal_model.dart';
+import '../../data/models/goal_model.dart'; // Import model dari file aslinya
+
+// --- CUSTOM FORMATTER UNTUK RIBUAN RUPIAH ---
+class CurrencyInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (newValue.text.isEmpty) {
+      return newValue.copyWith(text: '');
+    }
+
+    // Hanya ambil karakter angka murni
+    String numericOnly = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    
+    if (numericOnly.isEmpty) {
+      return newValue.copyWith(text: '');
+    }
+
+    // Format angka menggunakan titik ribuan bergaya Indonesia (id_ID)
+    final formatter = NumberFormat.decimalPattern('id_ID');
+    String newText = formatter.format(int.parse(numericOnly));
+
+    // Kembalikan value dengan penempatan kursor di akhir text
+    return newValue.copyWith(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newText.length),
+    );
+  }
+}
+// --- AKHIR CUSTOM FORMATTER ---
 
 class GoalDetailScreen extends ConsumerStatefulWidget {
   final int goalId;
@@ -71,11 +102,14 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
               TextFormField(
                 controller: amountController,
                 keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                // Menggunakan Custom Formatter
+                inputFormatters: [CurrencyInputFormatter()],
                 decoration: const InputDecoration(labelText: 'Nominal', prefixText: 'Rp ', border: OutlineInputBorder()),
                 validator: (val) {
                   if (val == null || val.isEmpty) return 'Wajib diisi';
-                  if ((double.tryParse(val) ?? 0) <= 0) return 'Nominal tidak valid';
+                  // Bersihkan titik sebelum validasi nilai
+                  final cleanVal = val.replaceAll(RegExp(r'[^0-9]'), '');
+                  if ((double.tryParse(cleanVal) ?? 0) <= 0) return 'Nominal tidak valid';
                   return null;
                 },
               ),
@@ -94,7 +128,11 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
           FilledButton(
             onPressed: () {
               if (formKey.currentState!.validate()) {
-                _handleTransaction('in', double.parse(amountController.text), noteController.text.trim(), currentSaved);
+                // Bersihkan titik sebelum konversi ke double
+                final cleanAmountText = amountController.text.replaceAll(RegExp(r'[^0-9]'), '');
+                final amount = double.parse(cleanAmountText);
+                
+                _handleTransaction('in', amount, noteController.text.trim(), currentSaved);
               }
             },
             child: const Text('Simpan'),
@@ -140,11 +178,15 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
               TextFormField(
                 controller: amountController,
                 keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                // Menggunakan Custom Formatter
+                inputFormatters: [CurrencyInputFormatter()],
                 decoration: const InputDecoration(labelText: 'Nominal Ditarik', prefixText: 'Rp ', border: OutlineInputBorder()),
                 validator: (val) {
                   if (val == null || val.isEmpty) return 'Wajib diisi';
-                  final amt = double.tryParse(val) ?? 0;
+                  // Bersihkan titik sebelum validasi nilai
+                  final cleanVal = val.replaceAll(RegExp(r'[^0-9]'), '');
+                  final amt = double.tryParse(cleanVal) ?? 0;
+                  
                   if (amt <= 0) return 'Tidak valid';
                   if (amt > currentSaved) return 'Saldo tabungan tidak cukup';
                   return null;
@@ -166,7 +208,11 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
             onPressed: () {
               if (formKey.currentState!.validate()) {
-                _handleTransaction('out', double.parse(amountController.text), noteController.text.trim(), currentSaved);
+                // Bersihkan titik sebelum konversi ke double
+                final cleanAmountText = amountController.text.replaceAll(RegExp(r'[^0-9]'), '');
+                final amount = double.parse(cleanAmountText);
+
+                _handleTransaction('out', amount, noteController.text.trim(), currentSaved);
               }
             },
             child: const Text('Tarik Dana'),

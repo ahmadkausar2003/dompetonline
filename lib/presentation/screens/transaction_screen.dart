@@ -66,6 +66,7 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
   Future<void> _saveTransaction() async {
     if (!_formKey.currentState!.validate()) return;
 
+    // Menghapus titik/karakter selain angka sebelum disimpan ke database
     final amountText = _amountController.text.replaceAll(RegExp(r'[^0-9]'), '');
     final amount = double.tryParse(amountText);
 
@@ -175,7 +176,8 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
                 TextFormField(
                   controller: _amountController,
                   keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  // Menggunakan custom formatter agar muncul titik otomatis
+                  inputFormatters: [CurrencyInputFormatter()],
                   style: theme.textTheme.headlineLarge?.copyWith(fontSize: 28),
                   decoration: InputDecoration(
                     prefixText: 'Rp ',
@@ -395,6 +397,36 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Custom formatter untuk menambahkan titik pemisah ribuan secara real-time
+class CurrencyInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (newValue.text.isEmpty) {
+      return newValue.copyWith(text: '');
+    }
+
+    // Hanya ambil karakter angka murni
+    String numericOnly = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    
+    if (numericOnly.isEmpty) {
+      return newValue.copyWith(text: '');
+    }
+
+    // Format angka menggunakan titik ribuan bergaya Indonesia (id_ID)
+    final formatter = NumberFormat.decimalPattern('id_ID');
+    String newText = formatter.format(int.parse(numericOnly));
+
+    // Kembalikan value dengan penempatan kursor di akhir text
+    return newValue.copyWith(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newText.length),
     );
   }
 }
