@@ -55,6 +55,8 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.8
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -98,3 +100,34 @@ flutter:
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
 
+# --- TAMBAHKAN KODE INI DI BAGIAN PALING BAWAH PUBSPEC.YAML ---
+
+# Mendaftarkan folder assets agar gambarnya bisa dibaca oleh sistem
+flutter:
+  uses-material-design: true
+  assets:
+    - lib/assets/images/
+
+# Konfigurasi Ikon Aplikasi
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "lib/assets/images/3.png"
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: "lib/assets/images/3.png"
+    background_color: "#10B981" # Emerald Green
+    theme_color: "#10B981"
+
+# Konfigurasi Splash Screen
+flutter_native_splash:
+  color: "#F8FAFC" # Warna background terang
+  image: "lib/assets/images/3.png"
+  color_dark: "#0F172A" # Warna background gelap (Dark Mode)
+  image_dark: lib/assets/images/3.png"
+  android_12:
+    image: lib/assets/images/3.png"
+    icon_background_color: "#F8FAFC"
+    image_dark: lib/assets/images/3.png"
+    icon_background_color_dark: "#0F172A"
