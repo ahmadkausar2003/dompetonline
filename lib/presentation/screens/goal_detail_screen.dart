@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 import '../providers/goal_provider.dart';
 import '../providers/transaction_provider.dart';
 import '../../core/database/db_helper.dart';
-import '../../data/models/goal_model.dart'; // Pastikan import ini sudah benar
+import '../../data/models/goal_model.dart'; 
 
 // --- CUSTOM FORMATTER UNTUK RIBUAN RUPIAH ---
 class CurrencyInputFormatter extends TextInputFormatter {
@@ -18,19 +18,13 @@ class CurrencyInputFormatter extends TextInputFormatter {
     if (newValue.text.isEmpty) {
       return newValue.copyWith(text: '');
     }
-
-    // Hanya ambil karakter angka murni
     String numericOnly = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-    
     if (numericOnly.isEmpty) {
       return newValue.copyWith(text: '');
     }
-
-    // Format angka menggunakan titik ribuan bergaya Indonesia (id_ID)
     final formatter = NumberFormat.decimalPattern('id_ID');
     String newText = formatter.format(int.parse(numericOnly));
 
-    // Kembalikan value dengan penempatan kursor di akhir text
     return newValue.copyWith(
       text: newText,
       selection: TextSelection.collapsed(offset: newText.length),
@@ -51,7 +45,6 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
   final _dbHelper = DatabaseHelper.instance;
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
 
-  // Future untuk mengambil log (di-refresh setiap ada perubahan)
   late Future<List<GoalLogModel>> _logsFuture;
 
   @override
@@ -78,10 +71,17 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
     await _dbHelper.insertGoalLog(newLog);
     
     final newSavedAmount = type == 'in' ? currentSaved + amount : currentSaved - amount;
-    await ref.read(goalProvider.notifier).updateGoalAmount(widget.goalId, newSavedAmount);
+    
+    // MENGIRIM TIPE & CATATAN KE PROVIDER UNTUK DICATAT DI STATISTIK & REKAPAN
+    await ref.read(goalProvider.notifier).updateGoalAmount(
+      widget.goalId, 
+      newSavedAmount, 
+      type: type, 
+      note: note,
+    );
     
     _refreshLogs();
-    if (mounted) Navigator.pop(context); // Tutup dialog
+    if (mounted) Navigator.pop(context);
   }
 
   // --- DIALOG ISI TABUNGAN ---
@@ -90,16 +90,41 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
     final noteController = TextEditingController();
     final formKey = GlobalKey<FormState>();
 
+    final currentBankBalance = ref.read(transactionProvider).bankBalance;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Isi Tabungan'),
-        content: SingleChildScrollView( // FIX: Bungkus dengan SingleChildScrollView
+        content: SingleChildScrollView( 
           child: Form(
             key: formKey,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Saldo Rekening Tersedia:', style: Theme.of(context).textTheme.bodySmall),
+                      Text(
+                        _currencyFormat.format(currentBankBalance), 
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold, 
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 TextFormField(
                   controller: amountController,
                   keyboardType: TextInputType.number,
@@ -108,7 +133,11 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
                   validator: (val) {
                     if (val == null || val.isEmpty) return 'Wajib diisi';
                     final cleanVal = val.replaceAll(RegExp(r'[^0-9]'), '');
-                    if ((double.tryParse(cleanVal) ?? 0) <= 0) return 'Nominal tidak valid';
+                    final amount = double.tryParse(cleanVal) ?? 0;
+                    
+                    if (amount <= 0) return 'Nominal tidak valid';
+                    if (amount > currentBankBalance) return 'Saldo Rekening tidak mencukupi!';
+                    
                     return null;
                   },
                 ),
@@ -158,7 +187,7 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Tarik Dana (Darurat)'),
-        content: SingleChildScrollView( // FIX: Bungkus dengan SingleChildScrollView
+        content: SingleChildScrollView( 
           child: Form(
             key: formKey,
             child: Column(

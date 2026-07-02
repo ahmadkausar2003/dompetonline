@@ -1,8 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/goal_model.dart';
+import '../../data/models/transaction_model.dart';
 import '../../core/database/db_helper.dart';
-
-// Penting: Import transaction_provider untuk melakukan update silang ke Saldo Rekening
 import 'transaction_provider.dart';
 
 class GoalState {
@@ -39,24 +38,62 @@ class GoalNotifier extends Notifier<GoalState> {
     await loadGoals();
   }
 
-  Future<void> updateGoalAmount(int goalId, double newSavedAmount) async {
+  Future<void> updateGoalAmount(int goalId, double newSavedAmount, {String? type, String? note}) async {
     final goalIndex = state.goals.indexWhere((g) => g.id == goalId);
     if (goalIndex != -1) {
       final goal = state.goals[goalIndex];
-      
-      // Menghitung selisih uang (Positif = Isi Tabungan, Negatif = Tarik Dana Darurat)
-      final difference = newSavedAmount - goal.savedAmount; 
+      final difference = (newSavedAmount - goal.savedAmount).abs(); 
 
       final updatedGoal = goal.copyWith(savedAmount: newSavedAmount);
       await _dbHelper.updateGoal(updatedGoal);
 
-      // --- SINKRONISASI DENGAN SALDO REKENING (TRANSACTION PROVIDER) ---
-      // Jika difference positif (nabung), saldo rekening berkurang.
-      // Jika difference negatif (narik), saldo rekening bertambah.
-      final currentBank = ref.read(transactionProvider).bankBalance;
-      final newBankBalance = currentBank - difference;
-      
-      await ref.read(transactionProvider.notifier).updateBankBalance(newBankBalance);
+      // --- SINKRONISASI CERDAS KE TRANSAKSI, REKAPAN, DAN STATISTIK ---
+      if (type == 'in') {
+        // ISI TABUNGAN: Uang keluar dari rekening, masuk ke celengan target
+        await ref.read(transactionProvider.notifier).addTransaction(
+          TransactionModel(
+            title: 'Nabung: ${goal.title}',
+            amount: difference,
+            type: 'expense',
+            category: 'Lainnya',
+            date: DateTime.now(),
+          )
+        );
+      } else if (type == 'out_refund') {
+        // CAIRKAN KE REKENING: Uang dari celengan kembali ke dompet utama
+        await ref.read(transactionProvider.notifier).addTransaction(
+          TransactionModel(
+            title: 'Pencairan: ${goal.title}',
+            amount: difference,
+            type: 'income',
+            category: 'Lainnya',
+            date: DateTime.now(),
+          )
+        );
+      } else if (type == 'out_expense') {
+        // PAKAI DARURAT: Sistem melakukan trik akuntansi otomatis. 
+        // 1. Mencairkan uang sementara (Income)
+        // 2. Langsung membelanjakannya untuk Darurat (Expense)
+        // Hasil = Saldo Bank Tetap Aman, tetapi Rekapan & Statistik mencatat pengeluaran.
+        await ref.read(transactionProvider.notifier).addTransaction(
+          TransactionModel(
+            title: 'Pencairan Darurat (Sistem)',
+            amount: difference,
+            type: 'income',
+            category: 'Lainnya',
+            date: DateTime.now(),
+          )
+        );
+        await ref.read(transactionProvider.notifier).addTransaction(
+          TransactionModel(
+            title: '🚨 Darurat: $note',
+            amount: difference,
+            type: 'expense',
+            category: 'Lainnya', 
+            date: DateTime.now().add(const Duration(seconds: 1)), // Beda 1 detik agar rapi di daftar
+          )
+        );
+      }
     }
     
     await loadGoals();
@@ -67,12 +104,17 @@ class GoalNotifier extends Notifier<GoalState> {
     if (goalIndex != -1) {
       final goal = state.goals[goalIndex];
       
-      // Jika target dihapus dan masih ada uang yang tersimpan di dalamnya, 
-      // otomatis kembalikan (refund) uang tersebut ke Saldo Rekening
+      // Jika target dihapus dan uang masih ada, kembalikan uang ke Saldo Rekening
       if (goal.savedAmount > 0) {
-        final currentBank = ref.read(transactionProvider).bankBalance;
-        final newBankBalance = currentBank + goal.savedAmount;
-        await ref.read(transactionProvider.notifier).updateBankBalance(newBankBalance);
+        await ref.read(transactionProvider.notifier).addTransaction(
+          TransactionModel(
+            title: 'Batal Target: ${goal.title}',
+            amount: goal.savedAmount,
+            type: 'income',
+            category: 'Lainnya',
+            date: DateTime.now(),
+          )
+        );
       }
     }
 

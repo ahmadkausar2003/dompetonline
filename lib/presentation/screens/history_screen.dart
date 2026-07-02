@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-// Paket Ekspor Laporan
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
@@ -25,9 +24,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     decimalDigits: 0,
   );
 
-  // --- FUNGSI EKSPOR DAN BAGIKAN PDF (WHATSAPP) ---
   Future<void> _exportAndSharePDF(List<TransactionModel> transactions, double totalIncome, double totalExpense) async {
-    // Memunculkan loading indikator
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -43,7 +40,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           margin: const pw.EdgeInsets.all(32),
           build: (pw.Context context) {
             return [
-              // Header Laporan
               pw.Header(
                 level: 0,
                 child: pw.Text('Laporan Transaksi Keuangan - SmartStudent Finance', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
@@ -52,7 +48,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
               pw.Text('Tanggal Cetak: ${DateFormat('dd MMMM yyyy HH:mm').format(DateTime.now())}'),
               pw.SizedBox(height: 20),
               
-              // Ringkasan
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
@@ -62,7 +57,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
               ),
               pw.SizedBox(height: 20),
 
-              // Tabel Riwayat
               pw.TableHelper.fromTextArray(
                 context: context,
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
@@ -84,15 +78,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         ),
       );
 
-      // Simpan PDF ke penyimpanan sementara (Cache)
       final output = await getTemporaryDirectory();
       final file = File('${output.path}/Laporan_Keuangan_Mahasiswa.pdf');
       await file.writeAsBytes(await pdf.save());
 
       if (!mounted) return;
-      Navigator.pop(context); // Tutup Loading
+      Navigator.pop(context);
 
-      // Bagikan file PDF ke WhatsApp / Aplikasi Lain menggunakan sintaks modern share_plus
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile(file.path)],
@@ -102,7 +94,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
     } catch (e) {
       if (mounted) {
-        Navigator.pop(context); // Tutup Loading
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal mencetak laporan: $e')));
       }
     }
@@ -113,7 +105,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final state = ref.watch(transactionProvider);
     final theme = Theme.of(context);
 
-    // Hitung total untuk laporan PDF
     double totalIncome = 0.0;
     double totalExpense = 0.0;
     for (var t in state.allTransactions) {
@@ -127,7 +118,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         appBar: AppBar(
           title: const Text('Rekapan Transaksi'),
           actions: [
-            // TOMBOL EXPORT KE PDF / WHATSAPP
             IconButton(
               icon: const Icon(Icons.picture_as_pdf_outlined),
               tooltip: 'Bagikan ke WhatsApp (PDF)',
@@ -184,10 +174,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
+  // LOGIKA WARNA & IKON JUGA DIPERBAIKI DI REKAPAN
   Widget _buildTransactionItem(BuildContext context, TransactionModel transaction) {
     final theme = Theme.of(context);
     final isIncome = transaction.type == 'income';
-    final amountColor = isIncome ? const Color(0xFF10B981) : theme.textTheme.titleMedium?.color;
+    
+    // Warna Dinamis: Hijau untuk Pemasukan, Merah untuk Pengeluaran
+    final itemColor = isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444);
 
     return InkWell(
       borderRadius: BorderRadius.circular(16),
@@ -201,7 +194,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           border: Border.all(
             color: theme.brightness == Brightness.light 
                 ? const Color(0xFFF1F5F9) 
-                : const Color(0xFF1E293B),
+                : const Color(0xFF2D2D2D),
           ),
         ),
         child: Row(
@@ -209,14 +202,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isIncome 
-                    ? const Color(0xFF10B981).withValues(alpha: 0.1) 
-                    : theme.primaryColor.withValues(alpha: 0.1),
+                color: itemColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 _getCategoryIcon(transaction.category),
-                color: isIncome ? const Color(0xFF10B981) : theme.primaryColor,
+                color: itemColor,
                 size: 24,
               ),
             ),
@@ -240,11 +231,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       ),
                       if (transaction.location != null) ...[
                         const SizedBox(width: 8),
-                        const Icon(Icons.location_on, size: 12, color: Colors.grey),
+                        const Icon(Icons.location_on_rounded, size: 12, color: Colors.grey),
                       ],
                       if (transaction.imagePath != null) ...[
                         const SizedBox(width: 4),
-                        const Icon(Icons.image, size: 12, color: Colors.grey),
+                        const Icon(Icons.image_rounded, size: 12, color: Colors.grey),
                       ],
                     ],
                   ),
@@ -255,8 +246,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             Text(
               '${isIncome ? '+' : '-'}${_currencyFormat.format(transaction.amount)}',
               style: TextStyle(
-                color: amountColor,
-                fontWeight: FontWeight.w700,
+                color: itemColor,
+                fontWeight: FontWeight.w800,
                 fontSize: 15,
                 letterSpacing: -0.5,
               ),
@@ -270,6 +261,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   void _showTransactionDetails(BuildContext context, TransactionModel transaction) {
     final theme = Theme.of(context);
     final isIncome = transaction.type == 'income';
+    final itemColor = isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444);
 
     showModalBottomSheet(
       context: context,
@@ -315,7 +307,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       style: TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
-                        color: isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                        color: itemColor,
                         letterSpacing: -1.0,
                       ),
                     ),
@@ -323,7 +315,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   const SizedBox(height: 32),
                   _buildDetailRow(context, 'Kategori', transaction.category, Icons.category_outlined),
                   const SizedBox(height: 16),
-                  _buildDetailRow(context, 'Tanggal', DateFormat('dd MMMM yyyy, HH:mm').format(transaction.date), Icons.calendar_today),
+                  _buildDetailRow(context, 'Tanggal', DateFormat('dd MMMM yyyy, HH:mm').format(transaction.date), Icons.calendar_today_rounded),
                   
                   if (transaction.location != null) ...[
                     const SizedBox(height: 16),
@@ -352,7 +344,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   ],
                   
                   const SizedBox(height: 32),
-                  // TOMBOL HAPUS DARI REKAPAN
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
@@ -398,14 +389,16 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   IconData _getCategoryIcon(String category) {
     switch (category.toLowerCase()) {
-      case 'makanan': return Icons.restaurant;
-      case 'kos': return Icons.home;
-      case 'transportasi': return Icons.directions_bus;
-      case 'tugas kuliah': return Icons.menu_book;
-      case 'nongkrong': return Icons.coffee;
-      case 'uang saku':
-      case 'pemasukan': return Icons.account_balance_wallet;
-      default: return Icons.receipt_long;
+      case 'makanan': return Icons.restaurant_rounded;
+      case 'kos': return Icons.home_rounded;
+      case 'transportasi': return Icons.directions_bus_rounded;
+      case 'tugas kuliah': return Icons.menu_book_rounded;
+      case 'nongkrong': return Icons.coffee_rounded;
+      case 'uang saku': return Icons.account_balance_wallet_rounded;
+      case 'gaji part-time': return Icons.work_rounded;
+      case 'bonus': return Icons.card_giftcard_rounded;
+      case 'lainnya': return Icons.category_rounded;
+      default: return Icons.receipt_long_rounded;
     }
   }
 }

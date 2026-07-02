@@ -8,6 +8,33 @@ import '../providers/transaction_provider.dart';
 import '../../data/models/transaction_model.dart';
 import 'transaction_screen.dart';
 
+// --- CUSTOM FORMATTER UNTUK RIBUAN RUPIAH ---
+class CurrencyInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (newValue.text.isEmpty) {
+      return newValue.copyWith(text: '');
+    }
+
+    String numericOnly = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    
+    if (numericOnly.isEmpty) {
+      return newValue.copyWith(text: '');
+    }
+
+    final formatter = NumberFormat.decimalPattern('id_ID');
+    String newText = formatter.format(int.parse(numericOnly));
+
+    return newValue.copyWith(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newText.length),
+    );
+  }
+}
+
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
@@ -24,7 +51,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   // Dialog untuk mengedit Saldo Rekening Manual
   void _showEditBankBalance(BuildContext context, WidgetRef ref, double currentBalance) {
-    // Format teks awal agar saat dialog terbuka sudah ada titik ribuannya
     final initialText = currentBalance == 0 
         ? '' 
         : NumberFormat.decimalPattern('id_ID').format(currentBalance.toInt());
@@ -41,10 +67,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           child: TextFormField(
             controller: controller,
             keyboardType: TextInputType.number,
-            // Hapus digitsOnly, dan gunakan CurrencyInputFormatter kustom kita
-            inputFormatters: [
-              CurrencyInputFormatter(),
-            ],
+            inputFormatters: [CurrencyInputFormatter()],
             decoration: const InputDecoration(
               labelText: 'Nominal Saldo Saat Ini',
               prefixText: 'Rp ',
@@ -64,7 +87,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           FilledButton(
             onPressed: () {
               if (formKey.currentState!.validate()) {
-                // Hapus semua karakter non-angka (seperti titik) sebelum diparse
                 final cleanText = controller.text.replaceAll(RegExp(r'[^0-9]'), '');
                 final newBalance = double.tryParse(cleanText) ?? 0.0;
                 
@@ -107,15 +129,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 1. Kartu Saldo Utama (Hasil Kalkulasi Transaksi)
                       _buildBalanceCard(context, state.mainBalance),
                       const SizedBox(height: 16),
                       
-                      // 2. Kartu Saldo Rekening (Input Manual Berdiri Sendiri)
                       _buildBankBalanceCard(context, state.bankBalance),
                       const SizedBox(height: 24),
                       
-                      // 3. Ringkasan Pemasukan & Pengeluaran Bulan Ini
                       _buildSummaryRow(context, state.currentMonthIncome, state.currentMonthExpense),
                       const SizedBox(height: 32),
                       
@@ -136,7 +155,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       ),
                       const SizedBox(height: 16),
                       
-                      // 4. Daftar Transaksi 7 Hari Terakhir
                       _buildRecentTransactions(context, state.recentTransactions),
                     ],
                   ),
@@ -220,8 +238,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: theme.brightness == Brightness.light 
-              ? const Color(0xFFE2E8F0) 
-              : const Color(0xFF334155),
+              ? const Color(0xFFF1F5F9) 
+              : const Color(0xFF2D2D2D),
         ),
       ),
       child: Row(
@@ -235,7 +253,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   color: Colors.blueAccent.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.account_balance, color: Colors.blueAccent),
+                child: const Icon(Icons.account_balance_rounded, color: Colors.blueAccent),
               ),
               const SizedBox(width: 16),
               Column(
@@ -311,8 +329,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: theme.brightness == Brightness.light 
-              ? const Color(0xFFE2E8F0) 
-              : const Color(0xFF334155),
+              ? const Color(0xFFF1F5F9) 
+              : const Color(0xFF2D2D2D),
         ),
       ),
       child: Column(
@@ -380,10 +398,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
+  // LOGIKA WARNA & IKON SUDAH DIPERBAIKI DI SINI
   Widget _buildTransactionItem(BuildContext context, TransactionModel transaction) {
     final theme = Theme.of(context);
     final isIncome = transaction.type == 'income';
-    final amountColor = isIncome ? const Color(0xFF10B981) : theme.textTheme.titleMedium?.color;
+    
+    // Warna Dinamis: Hijau untuk Pemasukan, Merah untuk Pengeluaran
+    final itemColor = isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444);
 
     return InkWell(
       borderRadius: BorderRadius.circular(16),
@@ -397,7 +418,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           border: Border.all(
             color: theme.brightness == Brightness.light 
                 ? const Color(0xFFF1F5F9) 
-                : const Color(0xFF1E293B),
+                : const Color(0xFF2D2D2D),
           ),
         ),
         child: Row(
@@ -405,14 +426,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isIncome 
-                    ? const Color(0xFF10B981).withValues(alpha: 0.1) 
-                    : theme.primaryColor.withValues(alpha: 0.1),
+                color: itemColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 _getCategoryIcon(transaction.category),
-                color: isIncome ? const Color(0xFF10B981) : theme.primaryColor,
+                color: itemColor, // Ikon sekarang akan mengikuti warna Hijau/Merah dengan presisi
                 size: 24,
               ),
             ),
@@ -436,11 +455,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       ),
                       if (transaction.location != null) ...[
                         const SizedBox(width: 8),
-                        const Icon(Icons.location_on, size: 12, color: Colors.grey),
+                        const Icon(Icons.location_on_rounded, size: 12, color: Colors.grey),
                       ],
                       if (transaction.imagePath != null) ...[
                         const SizedBox(width: 4),
-                        const Icon(Icons.image, size: 12, color: Colors.grey),
+                        const Icon(Icons.image_rounded, size: 12, color: Colors.grey),
                       ],
                     ],
                   ),
@@ -451,8 +470,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             Text(
               '${isIncome ? '+' : '-'}${_currencyFormat.format(transaction.amount)}',
               style: TextStyle(
-                color: amountColor,
-                fontWeight: FontWeight.w700,
+                color: itemColor, // Angka pengeluaran kini berwarna merah
+                fontWeight: FontWeight.w800,
                 fontSize: 15,
                 letterSpacing: -0.5,
               ),
@@ -466,6 +485,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   void _showTransactionDetails(BuildContext context, TransactionModel transaction) {
     final theme = Theme.of(context);
     final isIncome = transaction.type == 'income';
+    final itemColor = isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444);
 
     showModalBottomSheet(
       context: context,
@@ -511,7 +531,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       style: TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
-                        color: isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                        color: itemColor,
                         letterSpacing: -1.0,
                       ),
                     ),
@@ -519,7 +539,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   const SizedBox(height: 32),
                   _buildDetailRow(context, 'Kategori', transaction.category, Icons.category_outlined),
                   const SizedBox(height: 16),
-                  _buildDetailRow(context, 'Tanggal', DateFormat('dd MMMM yyyy, HH:mm').format(transaction.date), Icons.calendar_today),
+                  _buildDetailRow(context, 'Tanggal', DateFormat('dd MMMM yyyy, HH:mm').format(transaction.date), Icons.calendar_today_rounded),
                   
                   if (transaction.location != null) ...[
                     const SizedBox(height: 16),
@@ -591,46 +611,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
+  // MAPPING IKON BARU YANG LEBIH LENGKAP & MODERN
   IconData _getCategoryIcon(String category) {
     switch (category.toLowerCase()) {
-      case 'makanan': return Icons.restaurant;
-      case 'kos': return Icons.home;
-      case 'transportasi': return Icons.directions_bus;
-      case 'tugas kuliah': return Icons.menu_book;
-      case 'nongkrong': return Icons.coffee;
-      case 'uang saku':
-      case 'pemasukan': return Icons.account_balance_wallet;
-      default: return Icons.receipt_long;
+      case 'makanan': return Icons.restaurant_rounded;
+      case 'kos': return Icons.home_rounded;
+      case 'transportasi': return Icons.directions_bus_rounded;
+      case 'tugas kuliah': return Icons.menu_book_rounded;
+      case 'nongkrong': return Icons.coffee_rounded;
+      case 'uang saku': return Icons.account_balance_wallet_rounded;
+      case 'gaji part-time': return Icons.work_rounded;
+      case 'bonus': return Icons.card_giftcard_rounded;
+      case 'lainnya': return Icons.category_rounded;
+      default: return Icons.receipt_long_rounded;
     }
-  }
-}
-
-/// Custom formatter untuk menambahkan titik pemisah ribuan secara real-time
-class CurrencyInputFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    if (newValue.text.isEmpty) {
-      return newValue.copyWith(text: '');
-    }
-
-    // Hanya ambil karakter angka murni
-    String numericOnly = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-    
-    if (numericOnly.isEmpty) {
-      return newValue.copyWith(text: '');
-    }
-
-    // Format angka menggunakan titik ribuan bergaya Indonesia (id_ID)
-    final formatter = NumberFormat.decimalPattern('id_ID');
-    String newText = formatter.format(int.parse(numericOnly));
-
-    // Kembalikan value dengan penempatan kursor di akhir text
-    return newValue.copyWith(
-      text: newText,
-      selection: TextSelection.collapsed(offset: newText.length),
-    );
   }
 }
