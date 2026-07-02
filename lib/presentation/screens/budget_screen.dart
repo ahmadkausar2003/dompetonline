@@ -7,6 +7,27 @@ import '../providers/goal_provider.dart';
 import '../../data/models/goal_model.dart';
 import 'goal_detail_screen.dart';
 
+// Formatter Khusus untuk mengubah input angka menjadi format ribuan otomatis
+class CurrencyInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    if (newValue.text.isEmpty) return newValue.copyWith(text: '');
+    // Menghapus karakter non-digit
+    final numericString = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (numericString.isEmpty) return newValue.copyWith(text: '');
+    
+    // Format kembali dengan pemisah ribuan (titik)
+    final number = int.parse(numericString);
+    final formatter = NumberFormat('#,###', 'id_ID');
+    final newString = formatter.format(number);
+    
+    return TextEditingValue(
+      text: newString,
+      selection: TextSelection.collapsed(offset: newString.length),
+    );
+  }
+}
+
 class BudgetScreen extends ConsumerWidget {
   const BudgetScreen({super.key});
 
@@ -47,7 +68,6 @@ class BudgetScreen extends ConsumerWidget {
                   itemBuilder: (context, index) {
                     final goal = state.goals[index];
                     
-                    // Kalkulasi progress yang aman
                     double progress = goal.targetAmount > 0 ? (goal.savedAmount / goal.targetAmount) : 0.0;
                     progress = progress.clamp(0.0, 1.0);
                     final isCompleted = progress >= 1.0;
@@ -69,33 +89,24 @@ class BudgetScreen extends ConsumerWidget {
                             borderRadius: BorderRadius.circular(24),
                             border: Border.all(
                               color: isCompleted 
-                                  ? const Color(0xFF10B981) // Hijau jika selesai
+                                  ? const Color(0xFF10B981)
                                   : (theme.brightness == Brightness.light ? const Color(0xFFE2E8F0) : const Color(0xFF334155)),
                               width: isCompleted ? 2 : 1,
                             ),
                             boxShadow: theme.brightness == Brightness.light
-                                ? [
-                                    BoxShadow(
-                                      color: Colors.grey.withValues(alpha: 0.1),
-                                      blurRadius: 20,
-                                      offset: const Offset(0, 10),
-                                    )
-                                  ]
+                                ? [BoxShadow(color: Colors.grey.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, 10))]
                                 : null,
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Judul dan Ikon Status
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Expanded(
                                     child: Text(
                                       goal.title,
-                                      style: theme.textTheme.titleLarge?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -112,8 +123,6 @@ class BudgetScreen extends ConsumerWidget {
                                 ],
                               ),
                               const SizedBox(height: 24),
-                              
-                              // Info Nominal
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -146,8 +155,6 @@ class BudgetScreen extends ConsumerWidget {
                                 ],
                               ),
                               const SizedBox(height: 20),
-
-                              // Progress Bar & Persentase Teks
                               Row(
                                 children: [
                                   Expanded(
@@ -191,7 +198,6 @@ class BudgetScreen extends ConsumerWidget {
     );
   }
 
-  // Dialog Buat Target Baru
   void _showAddGoalDialog(BuildContext context, WidgetRef ref) {
     final titleController = TextEditingController();
     final targetController = TextEditingController();
@@ -221,7 +227,8 @@ class BudgetScreen extends ConsumerWidget {
                 TextFormField(
                   controller: targetController,
                   keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  // Menggunakan Input Formatter Khusus di Sini!
+                  inputFormatters: [CurrencyInputFormatter()],
                   decoration: InputDecoration(
                     labelText: 'Nominal Target',
                     prefixText: 'Rp ',
@@ -229,7 +236,9 @@ class BudgetScreen extends ConsumerWidget {
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) return 'Nominal wajib diisi';
-                    if ((double.tryParse(value) ?? 0) <= 0) return 'Nominal tidak valid';
+                    // Menghapus titik sebelum mengecek nilainya
+                    final numericString = value.replaceAll('.', '');
+                    if ((double.tryParse(numericString) ?? 0) <= 0) return 'Nominal tidak valid';
                     return null;
                   },
                 ),
@@ -247,9 +256,11 @@ class BudgetScreen extends ConsumerWidget {
               ),
               onPressed: () {
                 if (formKey.currentState!.validate()) {
+                  // Menghapus format titik (ribuan) sebelum disimpan ke SQLite
+                  final numericString = targetController.text.replaceAll('.', '');
                   final newGoal = GoalModel(
                     title: titleController.text.trim(),
-                    targetAmount: double.parse(targetController.text),
+                    targetAmount: double.parse(numericString),
                     savedAmount: 0.0,
                   );
                   ref.read(goalProvider.notifier).addGoal(newGoal);

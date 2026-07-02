@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../providers/theme_provider.dart';
 import '../providers/transaction_provider.dart';
@@ -15,18 +17,20 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   String _userName = 'Mahasiswa Hebat';
+  String? _profileImagePath;
 
   @override
   void initState() {
     super.initState();
-    _loadUserName();
+    _loadProfileData();
   }
 
-  // --- LOGIKA NAMA PENGGUNA ---
-  Future<void> _loadUserName() async {
+  // --- LOGIKA DATA PROFIL ---
+  Future<void> _loadProfileData() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _userName = prefs.getString('user_name') ?? 'Mahasiswa Hebat';
+      _profileImagePath = prefs.getString('profile_image');
     });
   }
 
@@ -38,6 +42,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     });
   }
 
+  Future<void> _pickProfileImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    
+    if (pickedFile != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('profile_image', pickedFile.path);
+      setState(() {
+        _profileImagePath = pickedFile.path;
+      });
+    }
+  }
+
+  // --- DIALOG EDIT NAMA ---
   void _showEditNameDialog() {
     final nameController = TextEditingController(text: _userName);
     final formKey = GlobalKey<FormState>();
@@ -85,9 +103,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final themeMode = ref.watch(themeProvider);
     final isDark = themeMode == ThemeMode.dark;
     
-    // Mengambil data dari provider lain untuk statistik
     final transactionState = ref.watch(transactionProvider);
     final goalState = ref.watch(goalProvider);
+
+    // Mengatur kontras warna teks sekunder agar tetap jelas di Mode Gelap/Terang
+    final subtitleColor = theme.brightness == Brightness.dark ? Colors.white70 : Colors.black87;
 
     return Scaffold(
       appBar: AppBar(
@@ -119,30 +139,45 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   Stack(
                     alignment: Alignment.bottomRight,
                     children: [
-                      CircleAvatar(
-                        radius: 50,
-                        backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
-                        child: Icon(Icons.person, size: 50, color: theme.colorScheme.primary),
+                      GestureDetector(
+                        onTap: _pickProfileImage,
+                        child: CircleAvatar(
+                          radius: 50,
+                          backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+                          backgroundImage: _profileImagePath != null ? FileImage(File(_profileImagePath!)) : null,
+                          child: _profileImagePath == null 
+                              ? Icon(Icons.person, size: 50, color: theme.colorScheme.primary)
+                              : null,
+                        ),
                       ),
                       GestureDetector(
-                        onTap: _showEditNameDialog,
+                        onTap: _pickProfileImage,
                         child: CircleAvatar(
                           radius: 16,
                           backgroundColor: theme.colorScheme.primary,
-                          child: const Icon(Icons.edit, size: 16, color: Colors.white),
+                          child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  Text(
-                    _userName,
-                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        _userName,
+                        style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit, size: 20),
+                        color: theme.colorScheme.primary,
+                        onPressed: _showEditNameDialog,
+                      )
+                    ],
                   ),
-                  const SizedBox(height: 4),
                   Text(
                     'Pengguna SmartStudent Finance',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey),
+                    style: theme.textTheme.bodyMedium?.copyWith(color: subtitleColor),
                   ),
                   const SizedBox(height: 24),
                   const Divider(),
@@ -159,7 +194,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
                             ),
                             const SizedBox(height: 4),
-                            Text('Total Transaksi', style: theme.textTheme.bodySmall),
+                            Text('Total Transaksi', style: theme.textTheme.bodySmall?.copyWith(color: subtitleColor)),
                           ],
                         ),
                       ),
@@ -172,7 +207,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
                             ),
                             const SizedBox(height: 4),
-                            Text('Target Dibuat', style: theme.textTheme.bodySmall),
+                            Text('Target Dibuat', style: theme.textTheme.bodySmall?.copyWith(color: subtitleColor)),
                           ],
                         ),
                       ),
@@ -195,10 +230,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               context: context,
               icon: isDark ? Icons.dark_mode : Icons.light_mode,
               title: 'Mode Gelap (Dark Mode)',
-              subtitle: 'Sesuaikan tampilan aplikasi',
+              subtitle: 'Ubah tampilan gelap/terang',
+              subtitleColor: subtitleColor,
               trailing: Switch(
                 value: isDark,
-                activeThumbColor: theme.colorScheme.primary,
+                activeColor: theme.colorScheme.primary,
                 onChanged: (value) => ref.read(themeProvider.notifier).toggleTheme(),
               ),
             ),
@@ -210,6 +246,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               icon: Icons.delete_forever,
               title: 'Hapus Semua Data',
               subtitle: 'Reset transaksi dan target tabungan',
+              subtitleColor: subtitleColor,
               iconColor: const Color(0xFFEF4444),
               textColor: const Color(0xFFEF4444),
               onTap: () => _showResetConfirmationDialog(context, ref),
@@ -222,6 +259,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               icon: Icons.info_outline,
               title: 'Tentang Aplikasi',
               subtitle: 'SmartStudent Finance v1.0.0',
+              subtitleColor: subtitleColor,
               onTap: () {
                 showAboutDialog(
                   context: context,
@@ -245,6 +283,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     required IconData icon,
     required String title,
     String? subtitle,
+    Color? subtitleColor,
     Widget? trailing,
     VoidCallback? onTap,
     Color? iconColor,
@@ -287,12 +326,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                   if (subtitle != null) ...[
                     const SizedBox(height: 4),
-                    Text(subtitle, style: theme.textTheme.bodySmall),
+                    Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: subtitleColor)),
                   ],
                 ],
               ),
             ),
-            ?trailing,
+            if (trailing != null) trailing,
             if (onTap != null && trailing == null)
               const Icon(Icons.chevron_right, color: Colors.grey),
           ],
@@ -318,13 +357,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
               onPressed: () async {
-                // Menghapus data dari database menggunakan transactionProvider (karena sudah kita buat method clearAllData disana)
                 await ref.read(transactionProvider.notifier).clearAllData();
-                // Refresh data target agar kosong
                 await ref.read(goalProvider.notifier).loadGoals();
                 
                 if (!context.mounted) return;
-                
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(

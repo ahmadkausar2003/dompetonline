@@ -2,6 +2,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+// Paket Ekspor Laporan
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../providers/transaction_provider.dart';
 import '../../data/models/transaction_model.dart';
@@ -20,16 +25,114 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     decimalDigits: 0,
   );
 
+  // --- FUNGSI EKSPOR DAN BAGIKAN PDF (WHATSAPP) ---
+  Future<void> _exportAndSharePDF(List<TransactionModel> transactions, double totalIncome, double totalExpense) async {
+    // Memunculkan loading indikator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final pdf = pw.Document();
+      
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(32),
+          build: (pw.Context context) {
+            return [
+              // Header Laporan
+              pw.Header(
+                level: 0,
+                child: pw.Text('Laporan Transaksi Keuangan - SmartStudent Finance', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Text('Tanggal Cetak: ${DateFormat('dd MMMM yyyy HH:mm').format(DateTime.now())}'),
+              pw.SizedBox(height: 20),
+              
+              // Ringkasan
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('Total Pemasukan: ${_currencyFormat.format(totalIncome)}', style: pw.TextStyle(color: PdfColors.green)),
+                  pw.Text('Total Pengeluaran: ${_currencyFormat.format(totalExpense)}', style: pw.TextStyle(color: PdfColors.red)),
+                ]
+              ),
+              pw.SizedBox(height: 20),
+
+              // Tabel Riwayat
+              pw.TableHelper.fromTextArray(
+                context: context,
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey800),
+                cellAlignment: pw.Alignment.centerLeft,
+                data: <List<String>>[
+                  <String>['Tanggal', 'Judul', 'Kategori', 'Tipe', 'Nominal'],
+                  ...transactions.map((t) => [
+                        DateFormat('dd/MM/yyyy').format(t.date),
+                        t.title,
+                        t.category,
+                        t.type == 'income' ? 'Masuk' : 'Keluar',
+                        _currencyFormat.format(t.amount),
+                      ]),
+                ],
+              ),
+            ];
+          },
+        ),
+      );
+
+      // Simpan PDF ke penyimpanan sementara (Cache)
+      final output = await getTemporaryDirectory();
+      final file = File('${output.path}/Laporan_Keuangan_Mahasiswa.pdf');
+      await file.writeAsBytes(await pdf.save());
+
+      if (!mounted) return;
+      Navigator.pop(context); // Tutup Loading
+
+      // Bagikan file PDF ke WhatsApp / Aplikasi Lain
+      await Share.shareXFiles(
+        [XFile(file.path)], 
+        text: 'Halo! Berikut adalah rekapan transaksi keuangan saya dari aplikasi SmartStudent Finance. 📄',
+      );
+
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Tutup Loading
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal mencetak laporan: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(transactionProvider);
     final theme = Theme.of(context);
+
+    // Hitung total untuk laporan PDF
+    double totalIncome = 0.0;
+    double totalExpense = 0.0;
+    for (var t in state.allTransactions) {
+      if (t.type == 'income') totalIncome += t.amount;
+      if (t.type == 'expense') totalExpense += t.amount;
+    }
 
     return DefaultTabController(
       length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Rekapan Transaksi'),
+          actions: [
+            // TOMBOL EXPORT KE PDF / WHATSAPP
+            IconButton(
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              tooltip: 'Bagikan ke WhatsApp (PDF)',
+              onPressed: () => _exportAndSharePDF(state.allTransactions, totalIncome, totalExpense),
+            ),
+            const SizedBox(width: 8),
+          ],
           bottom: TabBar(
             labelColor: theme.colorScheme.primary,
             unselectedLabelColor: Colors.grey,
@@ -162,7 +265,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
-  // Dialog untuk melihat detail lengkap termasuk foto struk dan lokasi
   void _showTransactionDetails(BuildContext context, TransactionModel transaction) {
     final theme = Theme.of(context);
     final isIncome = transaction.type == 'income';
@@ -246,6 +348,30 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       ),
                     ),
                   ],
+                  
+                  const SizedBox(height: 32),
+                  // TOMBOL HAPUS DARI REKAPAN
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        await ref.read(transactionProvider.notifier).deleteTransaction(transaction.id!);
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Transaksi berhasil dihapus')),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Hapus Transaksi'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFEF4444),
+                        side: const BorderSide(color: Color(0xFFEF4444)),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             );
