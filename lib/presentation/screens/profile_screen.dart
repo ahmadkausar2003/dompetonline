@@ -234,7 +234,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               subtitleColor: subtitleColor,
               trailing: Switch(
                 value: isDark,
-                activeColor: theme.colorScheme.primary,
+                activeThumbColor: theme.colorScheme.primary,
                 onChanged: (value) => ref.read(themeProvider.notifier).toggleTheme(),
               ),
             ),
@@ -331,7 +331,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ],
               ),
             ),
-            if (trailing != null) trailing,
+            ?trailing,
             if (onTap != null && trailing == null)
               const Icon(Icons.chevron_right, color: Colors.grey),
           ],
