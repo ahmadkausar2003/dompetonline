@@ -10,7 +10,8 @@ import 'package:share_plus/share_plus.dart';
 import '../providers/transaction_provider.dart';
 import '../../data/models/transaction_model.dart';
 
-class HistoryScreen extends ConsumerStatefulWidget {
+class HistoryScreen extends ConsumerStatefulWidget 
+{
   const HistoryScreen({super.key});
 
   @override
