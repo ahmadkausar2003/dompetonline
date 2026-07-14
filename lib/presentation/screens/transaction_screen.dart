@@ -19,21 +19,27 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _amountController = TextEditingController();
-  final _locationController = TextEditingController(); // Controller Lokasi Baru
+  final _locationController = TextEditingController(); 
 
   String _selectedType = 'expense';
   DateTime _selectedDate = DateTime.now();
-  File? _receiptImage; // Menyimpan file foto struk
+  File? _receiptImage; 
 
-  final List<String> _expenseCategories = ['Makanan', 'Kos', 'Transportasi', 'Tugas Kuliah', 'Nongkrong', 'Lainnya'];
-  final List<String> _incomeCategories = ['Uang Saku', 'Gaji Part-time', 'Bonus', 'Lainnya'];
-  
+  // Penambahan List Default sesuai permintaan
+  final List<String> _baseExpenseCategories = [
+    'Makanan', 'Kos', 'Transportasi', 'Tugas Kuliah', 'Nongkrong', 
+    'Belanja', 'Hiburan', 'Tagihan', 'Kesehatan', 'Olahraga', 'Lainnya'
+  ];
+  final List<String> _baseIncomeCategories = [
+    'Uang Saku', 'Gaji Part-time', 'Bonus', 'Investasi', 'Hadiah', 'Lainnya'
+  ];
+
   late String _selectedCategory;
 
   @override
   void initState() {
     super.initState();
-    _selectedCategory = _expenseCategories.first;
+    _selectedCategory = _baseExpenseCategories.first;
   }
 
   @override
@@ -52,7 +58,7 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
         source: source,
         imageQuality: 70, // Kompresi agar database tidak bengkak
       );
-      
+
       if (pickedFile != null) {
         setState(() {
           _receiptImage = File(pickedFile.path);
@@ -90,7 +96,7 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
     await ref.read(transactionProvider.notifier).addTransaction(newTransaction);
 
     if (!mounted) return;
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('$_selectedCategory berhasil dicatat!'),
@@ -115,11 +121,77 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
     }
   }
 
+  // Dialog Tambah Kategori Manual
+  void _showAddCategoryDialog(String type) {
+    final customCatController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Tambah Kategori Baru'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: customCatController,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              hintText: 'Contoh: Modal Usaha',
+              border: OutlineInputBorder(),
+            ),
+            validator: (value) => (value == null || value.trim().isEmpty) 
+                ? 'Tidak boleh kosong' 
+                : null,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                final newCat = customCatController.text.trim();
+                
+                // Panggil provider untuk menyimpan kategori
+                ref.read(transactionProvider.notifier).addCustomCategory(newCat, type);
+                
+                setState(() {
+                  _selectedCategory = newCat;
+                });
+                
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final state = ref.watch(transactionProvider);
+    
     final isIncome = _selectedType == 'income';
     final activeColor = isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+
+    // Menggabungkan list bawaan dan custom
+    List<String> currentCategories = isIncome
+        ? [..._baseIncomeCategories, ...state.customIncomeCategories]
+        : [..._baseExpenseCategories, ...state.customExpenseCategories];
+        
+    // Hilangkan duplikat jika ada dan tambahkan opsi "Tambah Manual"
+    currentCategories = currentCategories.toSet().toList();
+    currentCategories.add('+ Tambah Kategori...');
+
+    // Keamanan UI: Pastikan _selectedCategory valid ada di List, jika tidak reset ke yang pertama
+    if (!currentCategories.contains(_selectedCategory) && _selectedCategory != '+ Tambah Kategori...') {
+       _selectedCategory = currentCategories.first;
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -158,8 +230,8 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
                       setState(() {
                         _selectedType = newSelection.first;
                         _selectedCategory = _selectedType == 'expense' 
-                            ? _expenseCategories.first 
-                            : _incomeCategories.first;
+                            ? _baseExpenseCategories.first 
+                            : _baseIncomeCategories.first;
                       });
                     },
                     style: SegmentedButton.styleFrom(
@@ -169,14 +241,13 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
                   ),
                 ),
                 const SizedBox(height: 32),
-
+                
                 // 2. Input Nominal
                 Text('Nominal', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _amountController,
                   keyboardType: TextInputType.number,
-                  // Menggunakan custom formatter agar muncul titik otomatis
                   inputFormatters: [CurrencyInputFormatter()],
                   style: theme.textTheme.headlineLarge?.copyWith(fontSize: 28),
                   decoration: InputDecoration(
@@ -196,7 +267,7 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
                   validator: (value) => (value == null || value.isEmpty) ? 'Nominal tidak boleh kosong' : null,
                 ),
                 const SizedBox(height: 24),
-
+                
                 // 3. Input Judul / Catatan
                 Text('Catatan / Judul', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
@@ -217,7 +288,7 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
                   validator: (value) => (value == null || value.trim().isEmpty) ? 'Judul transaksi wajib diisi' : null,
                 ),
                 const SizedBox(height: 24),
-
+                
                 // 4. Input Lokasi (Opsional)
                 Text('Lokasi (Opsional)', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
@@ -238,11 +309,12 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-
+                
                 // 5. Kategori & Tanggal
                 Row(
                   children: [
                     Expanded(
+                      flex: 6,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -260,15 +332,26 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
                               child: DropdownButton<String>(
                                 value: _selectedCategory,
                                 isExpanded: true,
-                                items: (isIncome ? _incomeCategories : _expenseCategories)
-                                    .map((String category) {
+                                icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                                items: currentCategories.map((String category) {
+                                  final isAddAction = category == '+ Tambah Kategori...';
                                   return DropdownMenuItem<String>(
                                     value: category,
-                                    child: Text(category),
+                                    child: Text(
+                                      category,
+                                      style: TextStyle(
+                                        color: isAddAction ? theme.colorScheme.primary : null,
+                                        fontWeight: isAddAction ? FontWeight.bold : FontWeight.normal,
+                                      ),
+                                    ),
                                   );
                                 }).toList(),
                                 onChanged: (String? newValue) {
-                                  if (newValue != null) {
+                                  if (newValue == null) return;
+                                  
+                                  if (newValue == '+ Tambah Kategori...') {
+                                    _showAddCategoryDialog(_selectedType);
+                                  } else {
                                     setState(() => _selectedCategory = newValue);
                                   }
                                 },
@@ -280,6 +363,7 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
                     ),
                     const SizedBox(width: 16),
                     Expanded(
+                      flex: 4,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -314,7 +398,7 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
                   ],
                 ),
                 const SizedBox(height: 24),
-
+                
                 // 6. Unggah Struk / Bukti (Opsional)
                 Text('Bukti Transaksi (Opsional)', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
@@ -371,9 +455,9 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
                       ),
                     ],
                   ),
-
+                  
                 const SizedBox(height: 48),
-
+                
                 // 7. Tombol Simpan
                 SizedBox(
                   width: double.infinity,
@@ -411,18 +495,18 @@ class CurrencyInputFormatter extends TextInputFormatter {
     if (newValue.text.isEmpty) {
       return newValue.copyWith(text: '');
     }
-
+    
     // Hanya ambil karakter angka murni
     String numericOnly = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
     
     if (numericOnly.isEmpty) {
       return newValue.copyWith(text: '');
     }
-
+    
     // Format angka menggunakan titik ribuan bergaya Indonesia (id_ID)
     final formatter = NumberFormat.decimalPattern('id_ID');
     String newText = formatter.format(int.parse(numericOnly));
-
+    
     // Kembalikan value dengan penempatan kursor di akhir text
     return newValue.copyWith(
       text: newText,

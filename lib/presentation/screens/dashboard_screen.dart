@@ -49,7 +49,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final initialText = currentBalance == 0 
         ? '' 
         : NumberFormat.decimalPattern('id_ID').format(currentBalance.toInt());
-        
+
     final controller = TextEditingController(text: initialText);
     final formKey = GlobalKey<FormState>();
 
@@ -67,6 +67,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               labelText: 'Nominal Saldo Saat Ini',
               prefixText: 'Rp ',
               border: OutlineInputBorder(),
+              helperText: 'Otomatis tersinkron dengan Uang Cash',
+              helperMaxLines: 2,
             ),
             validator: (value) {
               if (value == null || value.isEmpty) return 'Tidak boleh kosong';
@@ -84,7 +86,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               if (formKey.currentState!.validate()) {
                 final cleanText = controller.text.replaceAll(RegExp(r'[^0-9]'), '');
                 final newBalance = double.tryParse(cleanText) ?? 0.0;
-                
+
                 ref.read(transactionProvider.notifier).updateBankBalance(newBalance);
                 Navigator.pop(context);
               }
@@ -96,11 +98,36 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
+  void _showCashInfoDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: const [
+            Icon(Icons.wallet, color: Color(0xFFF59E0B)),
+            SizedBox(width: 8),
+            Text('Info Uang Cash'),
+          ],
+        ),
+        content: const Text(
+          'Uang Cash dihitung otomatis dari Total Saldo Utama dikurangi Saldo Rekening.\n\n'
+          'Jika bernilai minus (-), artinya Anda memasukkan Saldo Rekening manual lebih besar dari total riwayat transaksi Anda.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Mengerti'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(transactionProvider);
     final theme = Theme.of(context);
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('SmartStudent Finance'),
@@ -127,7 +154,32 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       _buildBalanceCard(context, state.mainBalance),
                       const SizedBox(height: 16),
                       
-                      _buildBankBalanceCard(context, state.bankBalance),
+                      // Split Wallet Section
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildSubBalanceCard(
+                              context: context,
+                              title: 'Di Rekening',
+                              balance: state.bankBalance,
+                              icon: Icons.account_balance_rounded,
+                              color: Colors.blueAccent,
+                              onTap: () => _showEditBankBalance(context, ref, state.bankBalance),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildSubBalanceCard(
+                              context: context,
+                              title: 'Uang Cash',
+                              balance: state.cashBalance,
+                              icon: Icons.wallet_rounded,
+                              color: const Color(0xFFF59E0B),
+                              onTap: () => _showCashInfoDialog(context),
+                            ),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 24),
                       
                       _buildSummaryRow(context, state.currentMonthIncome, state.currentMonthExpense),
@@ -223,61 +275,78 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  Widget _buildBankBalanceCard(BuildContext context, double balance) {
+  Widget _buildSubBalanceCard({
+    required BuildContext context,
+    required String title,
+    required double balance,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
     final theme = Theme.of(context);
-    
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: theme.cardTheme.color,
+    final isNegative = balance < 0;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: theme.brightness == Brightness.light 
-              ? const Color(0xFFF1F5F9) 
-              : const Color(0xFF2D2D2D),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: theme.cardTheme.color,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: theme.brightness == Brightness.light 
+                  ? const Color(0xFFF1F5F9) 
+                  : const Color(0xFF2D2D2D),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.blueAccent.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.account_balance_rounded, color: Colors.blueAccent),
-              ),
-              const SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Saldo Rekening / Bank',
-                    style: theme.textTheme.titleMedium?.copyWith(fontSize: 14),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _currencyFormat.format(balance),
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      color: Colors.blueAccent,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
                     ),
+                    child: Icon(icon, color: color, size: 18),
                   ),
+                  Icon(
+                    title == 'Di Rekening' ? Icons.edit_rounded : Icons.info_outline_rounded,
+                    color: Colors.grey.withValues(alpha: 0.5),
+                    size: 16,
+                  )
                 ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _currencyFormat.format(balance),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                  letterSpacing: -0.5,
+                  color: isNegative ? const Color(0xFFEF4444) : theme.textTheme.titleMedium?.color,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            color: Colors.grey,
-            tooltip: 'Ubah Saldo Manual',
-            onPressed: () => _showEditBankBalance(context, ref, balance),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -316,7 +385,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     required Color iconColor,
   }) {
     final theme = Theme.of(context);
-    
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -645,8 +714,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       case 'bonus': return Icons.card_giftcard_rounded;
       case 'darurat': return Icons.warning_rounded; // Ikon Darurat
       case 'tabungan': return Icons.savings_rounded; // Ikon Tabungan
-      case 'lainnya': return Icons.category_rounded;
-      default: return Icons.receipt_long_rounded;
+      case 'belanja': return Icons.shopping_bag_rounded;
+      case 'hiburan': return Icons.movie_creation_rounded;
+      case 'kesehatan': return Icons.medical_services_rounded;
+      case 'tagihan': return Icons.receipt_rounded;
+      case 'olahraga': return Icons.sports_basketball_rounded;
+      case 'investasi': return Icons.trending_up_rounded;
+      case 'hadiah': return Icons.redeem_rounded;
+      default: return Icons.category_rounded;
     }
   }
 }
