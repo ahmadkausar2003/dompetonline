@@ -38,11 +38,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       // 1. Logika Filter Tipe
       bool passType = false;
       final isSystem = t.category == 'Tabungan' || 
-                       t.category == 'Darurat' || 
-                       t.title.contains('Darurat') || 
-                       t.title.contains('Pencairan') || 
-                       t.title.contains('Batal Target') || 
-                       t.title.contains('Nabung');
+          t.category == 'Darurat' || 
+          t.title.contains('Darurat') || 
+          t.title.contains('Pencairan') || 
+          t.title.contains('Batal Target') || 
+          t.title.contains('Nabung');
 
       if (_filterType == 'Semua') {
         passType = true;
@@ -155,7 +155,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           t.category != 'Tabungan' && 
           t.category != 'Darurat' && 
           !t.title.contains('Nabung')).toList();
-          
+
       final targetTransactions = transactions.where((t) => 
           t.category == 'Tabungan' || 
           t.category == 'Darurat' || 
@@ -164,13 +164,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           t.title.contains('Pencairan') ||
           t.title.contains('Batal Target')).toList();
 
-      // KALKULASI TOTAL
-      final double totalIncome = incomeTransactions.fold(0, (sum, item) => sum + item.amount);
-      final double totalExpense = expenseTransactions.fold(0, (sum, item) => sum + item.amount);
-      
-      // Menghitung Selisih Bersih (Pemasukan - Pengeluaran Non-Tabungan)
-      final double netBalance = totalIncome - totalExpense;
-      
+      // KALKULASI TOTAL SELISIH BERSIH SESUAI REQUEST (Semua Masuk - Keluar Non Tabungan)
+      final double totalAllIncome = transactions.where((t) => t.type == 'income').fold(0, (sum, item) => sum + item.amount);
+      final double totalNonTabunganExpense = expenseTransactions.fold(0, (sum, item) => sum + item.amount);
+      final double selisihBersihReal = totalAllIncome - totalNonTabunganExpense;
+
+      // Kalkulasi Tambahan (Hanya untuk Display Label)
       double totalTabungan = 0.0;
       double totalDarurat = 0.0;
 
@@ -185,7 +184,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           }
         }
       }
-      
+
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
@@ -237,7 +236,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 ),
               ),
               pw.SizedBox(height: 25),
-              
+
               // TABEL 1: PEMASUKAN
               pw.Text('1. Riwayat Pemasukan Harian', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
               pw.SizedBox(height: 8),
@@ -252,17 +251,17 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   data: <List<String>>[
                     <String>['Tanggal', 'Judul', 'Kategori', 'Nominal'],
                     ...incomeTransactions.map((t) => [
-                          DateFormat('dd/MM/yyyy').format(t.date),
-                          t.title,
-                          t.category,
-                          '+${_currencyFormat.format(t.amount)}',
-                        ]),
+                      DateFormat('dd/MM/yyyy').format(t.date),
+                      t.title,
+                      t.category,
+                      '+${_currencyFormat.format(t.amount)}',
+                    ]),
                   ],
                 ),
               pw.SizedBox(height: 25),
 
               // TABEL 2: PENGELUARAN
-              pw.Text('2. Riwayat Pengeluaran Harian', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.Text('2. Riwayat Pengeluaran (Tanpa Tabungan)', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
               pw.SizedBox(height: 8),
               if (expenseTransactions.isEmpty)
                 pw.Text('Tidak ada riwayat pengeluaran pada periode ini.', style: const pw.TextStyle(color: PdfColors.grey))
@@ -275,11 +274,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   data: <List<String>>[
                     <String>['Tanggal', 'Judul', 'Kategori', 'Nominal'],
                     ...expenseTransactions.map((t) => [
-                          DateFormat('dd/MM/yyyy').format(t.date),
-                          t.title,
-                          t.category,
-                          '-${_currencyFormat.format(t.amount)}',
-                        ]),
+                      DateFormat('dd/MM/yyyy').format(t.date),
+                      t.title,
+                      t.category,
+                      '-${_currencyFormat.format(t.amount)}',
+                    ]),
                   ],
                 ),
               pw.SizedBox(height: 25),
@@ -298,11 +297,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   data: <List<String>>[
                     <String>['Tanggal', 'Judul', 'Tipe', 'Nominal'],
                     ...targetTransactions.map((t) => [
-                          DateFormat('dd/MM/yyyy').format(t.date),
-                          t.title,
-                          t.type == 'income' ? 'Cair/Ditarik' : 'Ditabung',
-                          _currencyFormat.format(t.amount),
-                        ]),
+                      DateFormat('dd/MM/yyyy').format(t.date),
+                      t.title,
+                      t.type == 'income' ? 'Cair/Ditarik' : 'Ditabung',
+                      _currencyFormat.format(t.amount),
+                    ]),
                   ],
                 ),
               pw.SizedBox(height: 30),
@@ -315,23 +314,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text('Total Pemasukan Harian:', style: const pw.TextStyle(fontSize: 12)),
-                  pw.Text('+ ${_currencyFormat.format(totalIncome)}', style: pw.TextStyle(fontSize: 12, color: PdfColors.green, fontWeight: pw.FontWeight.bold)),
-                ]
-              ),
-              pw.SizedBox(height: 8),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('Total Pengeluaran Harian:', style: const pw.TextStyle(fontSize: 12)),
-                  pw.Text('- ${_currencyFormat.format(totalExpense)}', style: pw.TextStyle(fontSize: 12, color: PdfColors.red, fontWeight: pw.FontWeight.bold)),
-                ]
-              ),
-              pw.SizedBox(height: 8),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('Total Riwayat Tabungan (Masuk):', style: const pw.TextStyle(fontSize: 12)),
+                  pw.Text('Total Riwayat Tabungan (Uang Masuk ke Target):', style: const pw.TextStyle(fontSize: 12)),
                   pw.Text(_currencyFormat.format(totalTabungan), style: pw.TextStyle(fontSize: 12, color: PdfColors.indigo, fontWeight: pw.FontWeight.bold)),
                 ]
               ),
@@ -344,28 +327,49 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 ]
               ),
               pw.SizedBox(height: 16),
-              
+
               // TOTAL SELISIH BERSIH
               pw.Container(
-                padding: const pw.EdgeInsets.all(8),
+                padding: const pw.EdgeInsets.all(12),
                 decoration: pw.BoxDecoration(
-                  color: netBalance >= 0 ? PdfColors.green50 : PdfColors.red50,
-                  borderRadius: pw.BorderRadius.circular(6),
-                  border: pw.Border.all(color: netBalance >= 0 ? PdfColors.green200 : PdfColors.red200),
+                  color: selisihBersihReal >= 0 ? PdfColors.green50 : PdfColors.red50,
+                  borderRadius: pw.BorderRadius.circular(8),
+                  border: pw.Border.all(color: selisihBersihReal >= 0 ? PdfColors.green200 : PdfColors.red200, width: 1.5),
                 ),
-                child: pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                child: pw.Column(
                   children: [
-                    pw.Text('Selisih Bersih (Non-Tabungan):', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-                    pw.Text(
-                      '${netBalance >= 0 ? '+' : '-'} ${_currencyFormat.format(netBalance.abs())}', 
-                      style: pw.TextStyle(
-                        fontSize: 12, 
-                        color: netBalance >= 0 ? PdfColors.green800 : PdfColors.red800, 
-                        fontWeight: pw.FontWeight.bold
-                      )
+                    pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      children: [
+                        pw.Text('Total Uang Masuk (Seluruhnya):', style: const pw.TextStyle(fontSize: 12)),
+                        pw.Text('+ ${_currencyFormat.format(totalAllIncome)}', style: pw.TextStyle(fontSize: 12, color: PdfColors.green800, fontWeight: pw.FontWeight.bold)),
+                      ]
                     ),
-                  ],
+                    pw.SizedBox(height: 4),
+                    pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      children: [
+                        pw.Text('Total Uang Keluar (Tanpa Tabungan):', style: const pw.TextStyle(fontSize: 12)),
+                        pw.Text('- ${_currencyFormat.format(totalNonTabunganExpense)}', style: pw.TextStyle(fontSize: 12, color: PdfColors.red800, fontWeight: pw.FontWeight.bold)),
+                      ]
+                    ),
+                    pw.Divider(color: selisihBersihReal >= 0 ? PdfColors.green200 : PdfColors.red200),
+                    pw.SizedBox(height: 4),
+                    pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      children: [
+                        pw.Text('Selisih Bersih:', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                        pw.Text(
+                          '${selisihBersihReal >= 0 ? '+' : '-'} ${_currencyFormat.format(selisihBersihReal.abs())}', 
+                          style: pw.TextStyle(
+                            fontSize: 14, 
+                            color: selisihBersihReal >= 0 ? PdfColors.green800 : PdfColors.red800, 
+                            fontWeight: pw.FontWeight.bold
+                          )
+                        ),
+                      ],
+                    ),
+                  ]
                 ),
               ),
             ];
@@ -380,7 +384,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       if (!mounted) {
         return;
       }
-      
+
       Navigator.pop(context); // Tutup dialog loading
 
       await SharePlus.instance.share(
@@ -614,10 +618,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final itemColor = isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444);
 
     final isSystemTransaction = transaction.category == 'Darurat' || 
-                                transaction.category == 'Tabungan' || 
-                                transaction.title.contains('Darurat') ||
-                                transaction.title.contains('Pencairan') ||
-                                transaction.title.contains('Batal Target');
+        transaction.category == 'Tabungan' || 
+        transaction.title.contains('Darurat') ||
+        transaction.title.contains('Pencairan') ||
+        transaction.title.contains('Batal Target');
 
     showModalBottomSheet(
       context: context,
@@ -699,7 +703,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       ),
                     ),
                   ],
-                  
+
                   const SizedBox(height: 32),
                   
                   // LOGIKA PELINDUNG HAPUS TRANSAKSI SISTEM

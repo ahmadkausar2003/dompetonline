@@ -25,7 +25,6 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
   DateTime _selectedDate = DateTime.now();
   File? _receiptImage; 
 
-  // Penambahan List Default sesuai permintaan
   final List<String> _baseExpenseCategories = [
     'Makanan', 'Kos', 'Transportasi', 'Tugas Kuliah', 'Nongkrong', 
     'Belanja', 'Hiburan', 'Tagihan', 'Kesehatan', 'Olahraga', 'Lainnya'
@@ -56,9 +55,9 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
     try {
       final pickedFile = await picker.pickImage(
         source: source,
-        imageQuality: 70, // Kompresi agar database tidak bengkak
+        imageQuality: 70, 
       );
-
+      
       if (pickedFile != null) {
         setState(() {
           _receiptImage = File(pickedFile.path);
@@ -70,9 +69,10 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
   }
 
   Future<void> _saveTransaction() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
 
-    // Menghapus titik/karakter selain angka sebelum disimpan ke database
     final amountText = _amountController.text.replaceAll(RegExp(r'[^0-9]'), '');
     final amount = double.tryParse(amountText);
 
@@ -90,12 +90,14 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
       category: _selectedCategory,
       date: _selectedDate,
       location: _locationController.text.trim().isEmpty ? null : _locationController.text.trim(),
-      imagePath: _receiptImage?.path, // Menyimpan path lokal foto
+      imagePath: _receiptImage?.path, 
     );
 
     await ref.read(transactionProvider.notifier).addTransaction(newTransaction);
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -121,6 +123,131 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
     }
   }
 
+  // --- FUNGSI HAPUS KATEGORI ---
+  void _deleteCategory(String category) {
+    ref.read(transactionProvider.notifier).removeCategory(category, _selectedType);
+  }
+
+  // --- BOTTOM SHEET KATEGORI (MANAJEMEN KATEGORI) ---
+  void _showCategoryBottomSheet(List<String> currentCategories, Color activeColor) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (ctx, scrollController) {
+            return Column(
+              children: [
+                // Handle bar UI
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 16),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                Text('Pilih Kategori', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                
+                // List Kategori
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: currentCategories.length,
+                    itemBuilder: (context, index) {
+                      final cat = currentCategories[index];
+                      final isSelected = _selectedCategory == cat;
+                      
+                      return ListTile(
+                        title: Text(
+                          cat, 
+                          style: TextStyle(
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            color: isSelected ? activeColor : null,
+                          ),
+                        ),
+                        leading: Icon(
+                          isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                          color: isSelected ? activeColor : Colors.grey,
+                        ),
+                        trailing: currentCategories.length > 1 
+                          ? IconButton(
+                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                              tooltip: 'Hapus Kategori',
+                              onPressed: () {
+                                showDialog(
+                                  context: ctx,
+                                  builder: (context) => AlertDialog(
+                                    title: const Text('Hapus Kategori?'),
+                                    content: Text('Apakah Anda yakin ingin menghapus kategori "$cat"?'),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context), 
+                                        child: const Text('Batal')
+                                      ),
+                                      FilledButton(
+                                        style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
+                                        onPressed: () {
+                                          _deleteCategory(cat);
+                                          Navigator.pop(context); // Tutup dialog
+                                          Navigator.pop(ctx); // Tutup bottom sheet
+                                        },
+                                        child: const Text('Hapus'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ) 
+                          : null,
+                        onTap: () {
+                          setState(() {
+                            _selectedCategory = cat;
+                          });
+                          Navigator.pop(ctx);
+                        },
+                      );
+                    },
+                  ),
+                ),
+
+                // Tombol Tambah Kategori
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _showAddCategoryDialog(_selectedType);
+                      },
+                      icon: const Icon(Icons.add),
+                      label: const Text('Tambah Kategori Baru'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
+        );
+      }
+    );
+  }
+
   // Dialog Tambah Kategori Manual
   void _showAddCategoryDialog(String type) {
     final customCatController = TextEditingController();
@@ -140,8 +267,8 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
               border: OutlineInputBorder(),
             ),
             validator: (value) => (value == null || value.trim().isEmpty) 
-                ? 'Tidak boleh kosong' 
-                : null,
+              ? 'Tidak boleh kosong' 
+              : null,
           ),
         ),
         actions: [
@@ -154,7 +281,6 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
               if (formKey.currentState!.validate()) {
                 final newCat = customCatController.text.trim();
                 
-                // Panggil provider untuk menyimpan kategori
                 ref.read(transactionProvider.notifier).addCustomCategory(newCat, type);
                 
                 setState(() {
@@ -183,14 +309,16 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
     List<String> currentCategories = isIncome
         ? [..._baseIncomeCategories, ...state.customIncomeCategories]
         : [..._baseExpenseCategories, ...state.customExpenseCategories];
-        
-    // Hilangkan duplikat jika ada dan tambahkan opsi "Tambah Manual"
-    currentCategories = currentCategories.toSet().toList();
-    currentCategories.add('+ Tambah Kategori...');
 
-    // Keamanan UI: Pastikan _selectedCategory valid ada di List, jika tidak reset ke yang pertama
-    if (!currentCategories.contains(_selectedCategory) && _selectedCategory != '+ Tambah Kategori...') {
-       _selectedCategory = currentCategories.first;
+    // Buang duplikat dan buang kategori yang di-hide/dihapus
+    currentCategories = currentCategories.toSet().toList();
+    currentCategories.removeWhere((c) => isIncome 
+        ? state.hiddenIncomeCategories.contains(c) 
+        : state.hiddenExpenseCategories.contains(c));
+
+    // Keamanan UI: Pastikan _selectedCategory valid ada di List, jika tidak fallback ke index pertama
+    if (!currentCategories.contains(_selectedCategory)) {
+      _selectedCategory = currentCategories.isNotEmpty ? currentCategories.first : 'Lainnya';
     }
 
     return Scaffold(
@@ -320,41 +448,30 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
                         children: [
                           Text('Kategori', style: theme.textTheme.titleMedium),
                           const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            decoration: BoxDecoration(
-                              color: theme.brightness == Brightness.light 
-                                  ? const Color(0xFFF1F5F9) 
-                                  : const Color(0xFF1E293B),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _selectedCategory,
-                                isExpanded: true,
-                                icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                                items: currentCategories.map((String category) {
-                                  final isAddAction = category == '+ Tambah Kategori...';
-                                  return DropdownMenuItem<String>(
-                                    value: category,
+                          InkWell(
+                            onTap: () => _showCategoryBottomSheet(currentCategories, activeColor),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+                              decoration: BoxDecoration(
+                                color: theme.brightness == Brightness.light 
+                                    ? const Color(0xFFF1F5F9) 
+                                    : const Color(0xFF1E293B),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
                                     child: Text(
-                                      category,
-                                      style: TextStyle(
-                                        color: isAddAction ? theme.colorScheme.primary : null,
-                                        fontWeight: isAddAction ? FontWeight.bold : FontWeight.normal,
-                                      ),
+                                      _selectedCategory,
+                                      style: theme.textTheme.bodyLarge,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                  );
-                                }).toList(),
-                                onChanged: (String? newValue) {
-                                  if (newValue == null) return;
-                                  
-                                  if (newValue == '+ Tambah Kategori...') {
-                                    _showAddCategoryDialog(_selectedType);
-                                  } else {
-                                    setState(() => _selectedCategory = newValue);
-                                  }
-                                },
+                                  ),
+                                  const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
+                                ],
                               ),
                             ),
                           ),
@@ -455,7 +572,7 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
                       ),
                     ],
                   ),
-                  
+                
                 const SizedBox(height: 48),
                 
                 // 7. Tombol Simpan

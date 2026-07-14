@@ -19,9 +19,11 @@ class TransactionState {
   final bool isBankBalanceHidden; 
   final bool isCashBalanceHidden; 
   
-  // Kategori Custom
+  // Kategori Custom & Hidden
   final List<String> customExpenseCategories;
   final List<String> customIncomeCategories;
+  final List<String> hiddenExpenseCategories;
+  final List<String> hiddenIncomeCategories;
 
   const TransactionState({
     this.allTransactions = const [],
@@ -37,6 +39,8 @@ class TransactionState {
     this.isCashBalanceHidden = false,
     this.customExpenseCategories = const [],
     this.customIncomeCategories = const [],
+    this.hiddenExpenseCategories = const [],
+    this.hiddenIncomeCategories = const [],
   });
 
   TransactionState copyWith({
@@ -53,6 +57,8 @@ class TransactionState {
     bool? isCashBalanceHidden,
     List<String>? customExpenseCategories,
     List<String>? customIncomeCategories,
+    List<String>? hiddenExpenseCategories,
+    List<String>? hiddenIncomeCategories,
   }) {
     return TransactionState(
       allTransactions: allTransactions ?? this.allTransactions,
@@ -68,6 +74,8 @@ class TransactionState {
       isCashBalanceHidden: isCashBalanceHidden ?? this.isCashBalanceHidden,
       customExpenseCategories: customExpenseCategories ?? this.customExpenseCategories,
       customIncomeCategories: customIncomeCategories ?? this.customIncomeCategories,
+      hiddenExpenseCategories: hiddenExpenseCategories ?? this.hiddenExpenseCategories,
+      hiddenIncomeCategories: hiddenIncomeCategories ?? this.hiddenIncomeCategories,
     );
   }
 }
@@ -104,13 +112,15 @@ class TransactionNotifier extends Notifier<TransactionState> {
       
       // Saldo Utama MURNI adalah gabungan Rekening + Uang Cash
       final double mainBal = bankBal + cashBal;
-      
+
       final bool mainHidden = prefs.getBool('is_main_hidden') ?? false;
       final bool bankHidden = prefs.getBool('is_bank_hidden') ?? false;
       final bool cashHidden = prefs.getBool('is_cash_hidden') ?? false;
 
       final customExp = prefs.getStringList('custom_expense_cats') ?? [];
       final customInc = prefs.getStringList('custom_income_cats') ?? [];
+      final hiddenExp = prefs.getStringList('hidden_expense_cats') ?? [];
+      final hiddenInc = prefs.getStringList('hidden_income_cats') ?? [];
 
       state = state.copyWith(
         allTransactions: results[0] as List<TransactionModel>,
@@ -122,6 +132,8 @@ class TransactionNotifier extends Notifier<TransactionState> {
         currentMonthExpense: results[3] as double,
         customExpenseCategories: customExp,
         customIncomeCategories: customInc,
+        hiddenExpenseCategories: hiddenExp,
+        hiddenIncomeCategories: hiddenInc,
         isMainBalanceHidden: mainHidden,
         isBankBalanceHidden: bankHidden,
         isCashBalanceHidden: cashHidden,
@@ -179,7 +191,7 @@ class TransactionNotifier extends Notifier<TransactionState> {
     );
   }
 
-  // Tambah kategori kustom
+  // --- MANAJEMEN KATEGORI ---
   Future<void> addCustomCategory(String categoryName, String type) async {
     final prefs = await SharedPreferences.getInstance();
     if (type == 'expense') {
@@ -193,11 +205,40 @@ class TransactionNotifier extends Notifier<TransactionState> {
     }
   }
 
+  Future<void> removeCategory(String categoryName, String type) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (type == 'expense') {
+      if (state.customExpenseCategories.contains(categoryName)) {
+        // Hapus dari custom
+        final newList = List<String>.from(state.customExpenseCategories)..remove(categoryName);
+        await prefs.setStringList('custom_expense_cats', newList);
+        state = state.copyWith(customExpenseCategories: newList);
+      } else {
+        // Sembunyikan kategori bawaan
+        final newList = [...state.hiddenExpenseCategories, categoryName];
+        await prefs.setStringList('hidden_expense_cats', newList);
+        state = state.copyWith(hiddenExpenseCategories: newList);
+      }
+    } else {
+      if (state.customIncomeCategories.contains(categoryName)) {
+        // Hapus dari custom
+        final newList = List<String>.from(state.customIncomeCategories)..remove(categoryName);
+        await prefs.setStringList('custom_income_cats', newList);
+        state = state.copyWith(customIncomeCategories: newList);
+      } else {
+        // Sembunyikan kategori bawaan
+        final newList = [...state.hiddenIncomeCategories, categoryName];
+        await prefs.setStringList('hidden_income_cats', newList);
+        state = state.copyWith(hiddenIncomeCategories: newList);
+      }
+    }
+  }
+
   // --- LOGIKA TRANSAKSI DENGAN FITUR TARIK TUNAI ---
   Future<void> addTransaction(TransactionModel transaction) async {
     state = state.copyWith(isLoading: true);
     await _dbHelper.insertTransaction(transaction);
-
+    
     final prefs = await SharedPreferences.getInstance();
     double currentBank = prefs.getDouble('manual_bank_balance') ?? 0.0;
     double currentCash = prefs.getDouble('manual_cash_balance') ?? 0.0;
@@ -216,13 +257,13 @@ class TransactionNotifier extends Notifier<TransactionState> {
 
     await prefs.setDouble('manual_bank_balance', currentBank);
     await prefs.setDouble('manual_cash_balance', currentCash);
-
+    
     await loadTransactions();
   }
 
   Future<void> updateTransaction(TransactionModel transaction) async {
     state = state.copyWith(isLoading: true);
-
+    
     final oldTxIndex = state.allTransactions.indexWhere((t) => t.id == transaction.id);
     if (oldTxIndex != -1) {
       final oldTx = state.allTransactions[oldTxIndex];
@@ -253,14 +294,14 @@ class TransactionNotifier extends Notifier<TransactionState> {
       await prefs.setDouble('manual_bank_balance', currentBank);
       await prefs.setDouble('manual_cash_balance', currentCash);
     }
-
+    
     await _dbHelper.updateTransaction(transaction);
     await loadTransactions();
   }
 
   Future<void> deleteTransaction(int id) async {
     state = state.copyWith(isLoading: true);
-
+    
     final txIndex = state.allTransactions.indexWhere((t) => t.id == id);
     if (txIndex != -1) {
       final tx = state.allTransactions[txIndex];
@@ -289,13 +330,15 @@ class TransactionNotifier extends Notifier<TransactionState> {
   Future<void> clearAllData() async {
     state = state.copyWith(isLoading: true);
     await _dbHelper.clearAllData();
-
+    
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble('manual_bank_balance', 0.0);
     await prefs.setDouble('manual_cash_balance', 0.0); 
     await prefs.remove('custom_expense_cats');
     await prefs.remove('custom_income_cats');
-
+    await prefs.remove('hidden_expense_cats');
+    await prefs.remove('hidden_income_cats');
+    
     await loadTransactions();
   }
 }
