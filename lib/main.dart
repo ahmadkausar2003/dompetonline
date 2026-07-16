@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-// IMPORT PENTING UNTUK MENGHIDUPKAN FORMAT TANGGAL BAHASA INDONESIA
 import 'package:intl/date_symbol_data_local.dart'; 
+import 'package:firebase_core/firebase_core.dart'; // IMPORT FIREBASE
 
 import 'presentation/providers/theme_provider.dart';
+import 'presentation/providers/auth_provider.dart'; // IMPORT AUTH PROVIDER
 import 'presentation/screens/main_screen.dart';
+import 'presentation/screens/login_screen.dart'; // IMPORT LOGIN SCREEN
 
-// Ubah main menjadi async agar bisa melakukan inisialisasi
 void main() async {
   // Pastikan binding Flutter sudah siap sebelum inisialisasi lainnya
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // INISIALISASI FIREBASE
+  await Firebase.initializeApp();
   
   // MENGHIDUPKAN KAMUS BAHASA INDONESIA UNTUK FORMAT TANGGAL (INTL)
   await initializeDateFormatting('id_ID', null);
@@ -35,7 +39,6 @@ class SmartStudentFinanceApp extends ConsumerWidget {
   const SmartStudentFinanceApp({super.key});
 
   // --- PALET WARNA UTAMA ---
-  // Emerald Green yang modern, segar, dan kontrasnya tinggi
   static const Color primaryEmerald = Color(0xFF10B981); 
   
   // Warna Latar & Kartu (Light Mode - Bright & Crisp)
@@ -50,6 +53,8 @@ class SmartStudentFinanceApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Mendengarkan perubahan tema dari themeProvider
     final themeMode = ref.watch(themeProvider);
+    // Mendengarkan status autentikasi user
+    final authState = ref.watch(authProvider);
 
     return MaterialApp(
       title: 'SmartStudent Finance',
@@ -146,7 +151,29 @@ class SmartStudentFinanceApp extends ConsumerWidget {
         splashFactory: InkSparkle.splashFactory,
       ),
       
-      home: const MainScreen(),
+      // ==========================================
+      // LOGIKA ROUTING (PINTU MASUK)
+      // ==========================================
+      home: Builder(
+        builder: (context) {
+          // Tampilkan loading screen sementara Riverpod memeriksa status login
+          if (authState.isLoading && authState.user == null) {
+            return const Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(color: primaryEmerald),
+              ),
+            );
+          }
+          
+          // Jika sudah login, arahkan ke MainScreen
+          if (authState.user != null) {
+            return const MainScreen();
+          }
+          
+          // Jika belum login, arahkan ke LoginScreen
+          return const LoginScreen();
+        },
+      ),
     );
   }
 }

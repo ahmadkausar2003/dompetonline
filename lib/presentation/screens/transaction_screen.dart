@@ -90,7 +90,7 @@ class _TransactionScreenState extends ConsumerState<TransactionScreen> {
       category: _selectedCategory,
       date: _selectedDate,
       location: _locationController.text.trim().isEmpty ? null : _locationController.text.trim(),
-      imagePath: _receiptImage?.path, 
+      imagePath: _receiptImage?.path, uid: '', 
     );
 
     await ref.read(transactionProvider.notifier).addTransaction(newTransaction);

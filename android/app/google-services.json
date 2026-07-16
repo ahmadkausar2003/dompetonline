@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "746333542346",
+    "project_id": "smartstudent-finance",
+    "storage_bucket": "smartstudent-finance.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:746333542346:android:9f55f9ed93e07167c8a133",
+        "android_client_info": {
+          "package_name": "com.uca.aplikasi_keuangan_mahasiswa"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBDFKi2C2kkxcjAx_DSEcBqKQ3ubUxKhB8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

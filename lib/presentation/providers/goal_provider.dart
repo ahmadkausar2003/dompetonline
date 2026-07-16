@@ -1,15 +1,18 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/goal_model.dart';
 import '../../data/models/transaction_model.dart';
-import '../../core/database/db_helper.dart';
+import '../../data/firestore_service.dart';
 import 'transaction_provider.dart';
 
 class GoalState {
   final List<GoalModel> goals;
   final bool isLoading;
-
+  
   const GoalState({this.goals = const [], this.isLoading = false});
-
+  
   GoalState copyWith({List<GoalModel>? goals, bool? isLoading}) {
     return GoalState(
       goals: goals ?? this.goals,
@@ -19,48 +22,68 @@ class GoalState {
 }
 
 class GoalNotifier extends Notifier<GoalState> {
-  final DatabaseHelper _dbHelper = DatabaseHelper.instance;
-
+  final FirestoreService _firestoreService = FirestoreService();
+  StreamSubscription? _goalSubscription;
+  
   @override
   GoalState build() {
-    Future.microtask(() => loadGoals());
+    _initCloudStream();
     return const GoalState();
   }
-
-  Future<void> loadGoals() async {
+  
+  void _initCloudStream() async {
     state = state.copyWith(isLoading: true);
-    final goals = await _dbHelper.getAllGoals();
-    state = state.copyWith(goals: goals, isLoading: false);
+    final prefs = await SharedPreferences.getInstance();
+    final role = prefs.getString('role') ?? 'student';
+    final user = FirebaseAuth.instance.currentUser;
+    
+    final uidFilter = (role == 'admin') ? null : user?.uid;
+
+    _goalSubscription?.cancel();
+    _goalSubscription = _firestoreService.getGoalsStream(uid: uidFilter).listen((goals) {
+      state = state.copyWith(goals: goals, isLoading: false);
+    });
   }
 
+  void refD() {
+    _goalSubscription?.cancel();
+  }
+  
   Future<void> addGoal(GoalModel goal) async {
-    await _dbHelper.insertGoal(goal);
-    await loadGoals();
+    final user = FirebaseAuth.instance.currentUser;
+    final goalWithUid = goal.copyWith(uid: user?.uid ?? 'unknown');
+    await _firestoreService.addGoal(goalWithUid);
   }
-
-  Future<void> updateGoalAmount(int goalId, double newSavedAmount, {String? type, String? note}) async {
+  
+  // DIUBAH: parameter ID dari int menjadi String
+  Future<void> updateGoalAmount(String goalId, double newSavedAmount, {String? type, String? note}) async {
     final goalIndex = state.goals.indexWhere((g) => g.id == goalId);
     if (goalIndex != -1) {
       final goal = state.goals[goalIndex];
       final difference = (newSavedAmount - goal.savedAmount).abs(); 
-
+      
       final updatedGoal = goal.copyWith(savedAmount: newSavedAmount);
-      await _dbHelper.updateGoal(updatedGoal);
+      await _firestoreService.updateGoal(updatedGoal);
+      
+      final user = FirebaseAuth.instance.currentUser;
+      final uid = user?.uid ?? 'unknown';
 
       // --- SINKRONISASI KATEGORI KHUSUS KE TRANSAKSI ---
       if (type == 'in') {
         await ref.read(transactionProvider.notifier).addTransaction(
           TransactionModel(
+            uid: uid,
             title: 'Nabung: ${goal.title}',
             amount: difference,
             type: 'expense',
-            category: 'Tabungan', // Kategori Khusus
+            category: 'Tabungan',
             date: DateTime.now(),
           )
         );
       } else if (type == 'out_refund') {
         await ref.read(transactionProvider.notifier).addTransaction(
           TransactionModel(
+            uid: uid,
             title: 'Pencairan: ${goal.title}',
             amount: difference,
             type: 'income',
@@ -71,6 +94,7 @@ class GoalNotifier extends Notifier<GoalState> {
       } else if (type == 'out_expense') {
         await ref.read(transactionProvider.notifier).addTransaction(
           TransactionModel(
+            uid: uid,
             title: 'Pencairan Darurat (Sistem)',
             amount: difference,
             type: 'income',
@@ -80,26 +104,28 @@ class GoalNotifier extends Notifier<GoalState> {
         );
         await ref.read(transactionProvider.notifier).addTransaction(
           TransactionModel(
+            uid: uid,
             title: '🚨 Darurat: $note',
             amount: difference,
             type: 'expense',
-            category: 'Darurat', // Kategori Khusus Darurat
+            category: 'Darurat',
             date: DateTime.now().add(const Duration(seconds: 1)),
           )
         );
       }
     }
-    
-    await loadGoals();
   }
-
-  Future<void> deleteGoal(int id) async {
+  
+  // DIUBAH: parameter ID dari int menjadi String
+  Future<void> deleteGoal(String id) async {
     final goalIndex = state.goals.indexWhere((g) => g.id == id);
     if (goalIndex != -1) {
       final goal = state.goals[goalIndex];
       if (goal.savedAmount > 0) {
+        final user = FirebaseAuth.instance.currentUser;
         await ref.read(transactionProvider.notifier).addTransaction(
           TransactionModel(
+            uid: user?.uid ?? 'unknown',
             title: 'Batal Target: ${goal.title}',
             amount: goal.savedAmount,
             type: 'income',
@@ -109,10 +135,11 @@ class GoalNotifier extends Notifier<GoalState> {
         );
       }
     }
-
-    await _dbHelper.deleteGoal(id);
-    await loadGoals();
+    
+    await _firestoreService.deleteGoal(id);
   }
+
+  Future<void> loadGoals() async {}
 }
 
 final goalProvider = NotifierProvider<GoalNotifier, GoalState>(() => GoalNotifier());

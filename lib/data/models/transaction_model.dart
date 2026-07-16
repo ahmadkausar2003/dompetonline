@@ -1,16 +1,18 @@
 class TransactionModel {
-  final int? id;
+  final String? id; // DIUBAH: Firestore menggunakan String untuk ID Document
+  final String uid; // BARU: ID Pemilik transaksi (User ID)
   final String title;
   final double amount;
   final String type; // 'income' atau 'expense'
   final String category;
   final DateTime date;
   final String? note;
-  final String? imagePath; // Path lokal gambar struk dari kamera/galeri
+  final String? imagePath; // Path lokal/URL gambar struk dari kamera/galeri
   final String? location;  // Lokasi transaksi
 
   const TransactionModel({
     this.id,
+    required this.uid, // Wajib diisi saat membuat transaksi baru
     required this.title,
     required this.amount,
     required this.type,
@@ -22,7 +24,8 @@ class TransactionModel {
   });
 
   TransactionModel copyWith({
-    int? id,
+    String? id,
+    String? uid,
     String? title,
     double? amount,
     String? type,
@@ -34,6 +37,7 @@ class TransactionModel {
   }) {
     return TransactionModel(
       id: id ?? this.id,
+      uid: uid ?? this.uid,
       title: title ?? this.title,
       amount: amount ?? this.amount,
       type: type ?? this.type,
@@ -47,7 +51,8 @@ class TransactionModel {
 
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
+      // id tidak perlu dimasukkan ke Map karena akan menjadi nama dokumen di Firestore
+      'uid': uid,
       'title': title,
       'amount': amount,
       'type': type,
@@ -59,9 +64,10 @@ class TransactionModel {
     };
   }
 
-  factory TransactionModel.fromMap(Map<String, dynamic> map) {
+  factory TransactionModel.fromMap(Map<String, dynamic> map, String documentId) {
     return TransactionModel(
-      id: map['id'] != null ? map['id'] as int : null,
+      id: documentId, // Mengambil ID dari nama dokumen Firestore
+      uid: map['uid'] as String? ?? '',
       title: map['title'] as String,
       amount: map['amount'] as double,
       type: map['type'] as String,
@@ -75,6 +81,6 @@ class TransactionModel {
 
   @override
   String toString() {
-    return 'TransactionModel(id: $id, title: $title, amount: $amount, type: $type, category: $category, date: $date, note: $note, imagePath: $imagePath, location: $location)';
+    return 'TransactionModel(id: $id, uid: $uid, title: $title, amount: $amount, type: $type, category: $category, date: $date, note: $note, imagePath: $imagePath, location: $location)';
   }
 }

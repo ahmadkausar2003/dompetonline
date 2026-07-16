@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // BARU: Firestore
+import 'package:firebase_auth/firebase_auth.dart'; // BARU: Auth
 
 import '../providers/goal_provider.dart';
 import '../providers/transaction_provider.dart';
-import '../../core/database/db_helper.dart';
 import '../../data/models/goal_model.dart'; 
 
 // --- CUSTOM FORMATTER UNTUK RIBUAN RUPIAH ---
@@ -24,7 +25,7 @@ class CurrencyInputFormatter extends TextInputFormatter {
     }
     final formatter = NumberFormat.decimalPattern('id_ID');
     String newText = formatter.format(int.parse(numericOnly));
-
+    
     return newValue.copyWith(
       text: newText,
       selection: TextSelection.collapsed(offset: newText.length),
@@ -34,44 +35,48 @@ class CurrencyInputFormatter extends TextInputFormatter {
 // --- AKHIR CUSTOM FORMATTER ---
 
 class GoalDetailScreen extends ConsumerStatefulWidget {
-  final int goalId;
+  final String goalId; // PERBAIKAN: Menjadi String
   const GoalDetailScreen({super.key, required this.goalId});
-
+  
   @override
   ConsumerState<GoalDetailScreen> createState() => _GoalDetailScreenState();
 }
 
 class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
-  final _dbHelper = DatabaseHelper.instance;
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
-
-  late Future<List<GoalLogModel>> _logsFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _refreshLogs();
+  
+  // MENGAMBIL RIWAYAT LOG LANGSUNG DARI FIREBASE SECARA REAL-TIME
+  Stream<List<GoalLogModel>> _getLogsStream() {
+    return FirebaseFirestore.instance
+        .collection('goals')
+        .doc(widget.goalId)
+        .collection('logs')
+        .orderBy('date', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => GoalLogModel.fromMap(doc.data(), doc.id))
+            .toList());
   }
-
-  void _refreshLogs() {
-    setState(() {
-      _logsFuture = _dbHelper.getGoalLogs(widget.goalId);
-    });
-  }
-
+  
   Future<void> _handleTransaction(String type, double amount, String note, double currentSaved) async {
-    // Tentukan tipe log untuk UI Detail Target
     final logType = type == 'in' ? 'in' : 'out';
-
+    final user = FirebaseAuth.instance.currentUser;
+    
     final newLog = GoalLogModel(
       goalId: widget.goalId,
+      uid: user?.uid ?? 'unknown',
       amount: amount,
       type: logType,
       note: note,
       date: DateTime.now(),
     );
-
-    await _dbHelper.insertGoalLog(newLog);
+    
+    // MENYIMPAN RIWAYAT LOG KE AWAN FIREBASE
+    await FirebaseFirestore.instance
+        .collection('goals')
+        .doc(widget.goalId)
+        .collection('logs')
+        .add(newLog.toMap());
     
     final newSavedAmount = type == 'in' ? currentSaved + amount : currentSaved - amount;
     
@@ -83,179 +88,177 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
       note: note,
     );
     
-    _refreshLogs();
     if (mounted) Navigator.pop(context);
   }
-
+  
   void _showAddFundDialog(double currentSaved, double target) {
     final amountController = TextEditingController();
     final noteController = TextEditingController();
     final formKey = GlobalKey<FormState>();
-
+    
     final currentBankBalance = ref.read(transactionProvider).bankBalance;
-
+    
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Isi Tabungan'),
-        content: SingleChildScrollView( 
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Saldo Rekening Tersedia:', style: Theme.of(context).textTheme.bodySmall),
-                      Text(
-                        _currencyFormat.format(currentBankBalance), 
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold, 
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                TextFormField(
-                  controller: amountController,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [CurrencyInputFormatter()],
-                  decoration: const InputDecoration(labelText: 'Nominal', prefixText: 'Rp ', border: OutlineInputBorder()),
-                  validator: (val) {
-                    if (val == null || val.isEmpty) return 'Wajib diisi';
-                    final cleanVal = val.replaceAll(RegExp(r'[^0-9]'), '');
-                    final amount = double.tryParse(cleanVal) ?? 0;
-                    
-                    if (amount <= 0) return 'Nominal tidak valid';
-                    if (amount > currentBankBalance) return 'Saldo Rekening tidak mencukupi!';
-                    
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: noteController,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(labelText: 'Sumber Dana (Misal: Sisa Uang Jajan)', border: OutlineInputBorder()),
-                  validator: (val) => val == null || val.trim().isEmpty ? 'Wajib diisi' : null,
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                final cleanAmountText = amountController.text.replaceAll(RegExp(r'[^0-9]'), '');
-                final amount = double.parse(cleanAmountText);
-                
-                _handleTransaction('in', amount, noteController.text.trim(), currentSaved);
-              }
-            },
-            child: const Text('Simpan'),
-          ),
-        ],
-      ),
+       builder: (context) => AlertDialog(
+         title: const Text('Isi Tabungan'),
+         content: SingleChildScrollView( 
+           child: Form(
+             key: formKey,
+             child: Column(
+               mainAxisSize: MainAxisSize.min,
+               children: [
+                 Container(
+                   width: double.infinity,
+                   padding: const EdgeInsets.all(12),
+                   margin: const EdgeInsets.only(bottom: 16),
+                   decoration: BoxDecoration(
+                     color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                     borderRadius: BorderRadius.circular(8),
+                     border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
+                   ),
+                   child: Column(
+                     crossAxisAlignment: CrossAxisAlignment.start,
+                     children: [
+                       Text('Saldo Rekening Tersedia:', style: Theme.of(context).textTheme.bodySmall),
+                       Text(
+                         _currencyFormat.format(currentBankBalance), 
+                         style: TextStyle(
+                           fontWeight: FontWeight.bold, 
+                           color: Theme.of(context).colorScheme.primary,
+                         ),
+                       ),
+                     ],
+                   ),
+                 ),
+                 TextFormField(
+                   controller: amountController,
+                   keyboardType: TextInputType.number,
+                   inputFormatters: [CurrencyInputFormatter()],
+                   decoration: const InputDecoration(labelText: 'Nominal', prefixText: 'Rp ', border: OutlineInputBorder()),
+                   validator: (val) {
+                     if (val == null || val.isEmpty) return 'Wajib diisi';
+                     final cleanVal = val.replaceAll(RegExp(r'[^0-9]'), '');
+                     final amount = double.tryParse(cleanVal) ?? 0;
+                     
+                     if (amount <= 0) return 'Nominal tidak valid';
+                     if (amount > currentBankBalance) return 'Saldo Rekening tidak mencukupi!';
+                     return null;
+                   },
+                 ),
+                 const SizedBox(height: 16),
+                 TextFormField(
+                   controller: noteController,
+                   textCapitalization: TextCapitalization.sentences,
+                   decoration: const InputDecoration(labelText: 'Sumber Dana (Misal: Sisa Uang Jajan)', border: OutlineInputBorder()),
+                   validator: (val) => val == null || val.trim().isEmpty ? 'Wajib diisi' : null,
+                 ),
+               ],
+             ),
+           ),
+         ),
+         actions: [
+           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
+           FilledButton(
+             onPressed: () {
+               if (formKey.currentState!.validate()) {
+                 final cleanAmountText = amountController.text.replaceAll(RegExp(r'[^0-9]'), '');
+                 final amount = double.parse(cleanAmountText);
+                 
+                 _handleTransaction('in', amount, noteController.text.trim(), currentSaved);
+               }
+             },
+             child: const Text('Simpan'),
+           ),
+         ],
+       ),
     );
   }
-
+  
   void _showWithdrawFundDialog(double currentSaved) {
     final amountController = TextEditingController();
     final noteController = TextEditingController();
     final formKey = GlobalKey<FormState>();
-
+    
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Tarik Tabungan'),
-        content: SingleChildScrollView( 
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: amountController,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [CurrencyInputFormatter()],
-                  decoration: const InputDecoration(labelText: 'Nominal Penarikan', prefixText: 'Rp ', border: OutlineInputBorder()),
-                  validator: (val) {
-                    if (val == null || val.isEmpty) return 'Wajib diisi';
-                    final cleanVal = val.replaceAll(RegExp(r'[^0-9]'), '');
-                    final amt = double.tryParse(cleanVal) ?? 0;
-                    
-                    if (amt <= 0) return 'Tidak valid';
-                    if (amt > currentSaved) return 'Saldo tabungan tidak cukup';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: noteController,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(labelText: 'Catatan Penarikan', border: OutlineInputBorder()),
-                  validator: (val) => val == null || val.trim().isEmpty ? 'Wajib diisi' : null,
-                ),
-                const SizedBox(height: 24),
-                // TOMBOL 1: CAIRKAN KE REKENING
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.tonal(
-                    onPressed: () {
-                      if (formKey.currentState!.validate()) {
-                        final cleanAmountText = amountController.text.replaceAll(RegExp(r'[^0-9]'), '');
-                        final amount = double.parse(cleanAmountText);
-                        _handleTransaction('out_refund', amount, noteController.text.trim(), currentSaved);
-                      }
-                    },
-                    child: const Text('Cairkan ke Rekening / Dompet'),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // TOMBOL 2: PAKAI LANGSUNG (DARURAT)
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
-                    onPressed: () {
-                      if (formKey.currentState!.validate()) {
-                        final cleanAmountText = amountController.text.replaceAll(RegExp(r'[^0-9]'), '');
-                        final amount = double.parse(cleanAmountText);
-                        _handleTransaction('out_expense', amount, noteController.text.trim(), currentSaved);
-                      }
-                    },
-                    child: const Text('Gunakan Langsung (Darurat)'),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: TextButton(
-                    onPressed: () => Navigator.pop(context), 
-                    child: const Text('Batal'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+       builder: (context) => AlertDialog(
+         title: const Text('Tarik Tabungan'),
+         content: SingleChildScrollView( 
+           child: Form(
+             key: formKey,
+             child: Column(
+               mainAxisSize: MainAxisSize.min,
+               children: [
+                 TextFormField(
+                   controller: amountController,
+                   keyboardType: TextInputType.number,
+                   inputFormatters: [CurrencyInputFormatter()],
+                   decoration: const InputDecoration(labelText: 'Nominal Penarikan', prefixText: 'Rp ', border: OutlineInputBorder()),
+                   validator: (val) {
+                     if (val == null || val.isEmpty) return 'Wajib diisi';
+                     final cleanVal = val.replaceAll(RegExp(r'[^0-9]'), '');
+                     final amt = double.tryParse(cleanVal) ?? 0;
+                     
+                     if (amt <= 0) return 'Tidak valid';
+                     if (amt > currentSaved) return 'Saldo tabungan tidak cukup';
+                     return null;
+                   },
+                 ),
+                 const SizedBox(height: 16),
+                 TextFormField(
+                   controller: noteController,
+                   textCapitalization: TextCapitalization.sentences,
+                   decoration: const InputDecoration(labelText: 'Catatan Penarikan', border: OutlineInputBorder()),
+                   validator: (val) => val == null || val.trim().isEmpty ? 'Wajib diisi' : null,
+                 ),
+                 const SizedBox(height: 24),
+                 // TOMBOL 1: CAIRKAN KE REKENING
+                 SizedBox(
+                   width: double.infinity,
+                   child: FilledButton.tonal(
+                     onPressed: () {
+                       if (formKey.currentState!.validate()) {
+                         final cleanAmountText = amountController.text.replaceAll(RegExp(r'[^0-9]'), '');
+                         final amount = double.parse(cleanAmountText);
+                         _handleTransaction('out_refund', amount, noteController.text.trim(), currentSaved);
+                       }
+                     },
+                     child: const Text('Cairkan ke Rekening / Dompet'),
+                   ),
+                 ),
+                 const SizedBox(height: 8),
+                 // TOMBOL 2: PAKAI LANGSUNG (DARURAT)
+                 SizedBox(
+                   width: double.infinity,
+                   child: FilledButton(
+                     style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
+                     onPressed: () {
+                       if (formKey.currentState!.validate()) {
+                         final cleanAmountText = amountController.text.replaceAll(RegExp(r'[^0-9]'), '');
+                         final amount = double.parse(cleanAmountText);
+                         _handleTransaction('out_expense', amount, noteController.text.trim(), currentSaved);
+                       }
+                     },
+                     child: const Text('Gunakan Langsung (Darurat)'),
+                   ),
+                 ),
+                 const SizedBox(height: 8),
+                 SizedBox(
+                   width: double.infinity,
+                   child: TextButton(
+                     onPressed: () => Navigator.pop(context), 
+                     child: const Text('Batal'),
+                   ),
+                 ),
+               ],
+             ),
+           ),
+         ),
+       ),
     );
   }
-
+  
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(goalProvider);
@@ -264,9 +267,9 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
     final goalIndex = state.goals.indexWhere((g) => g.id == widget.goalId);
     if (goalIndex == -1) return const Scaffold(body: Center(child: Text('Target tidak ditemukan')));
     final goal = state.goals[goalIndex];
-
+    
     double progress = (goal.savedAmount / goal.targetAmount).clamp(0.0, 1.0);
-
+    
     return Scaffold(
       appBar: AppBar(
         title: Text(goal.title),
@@ -310,8 +313,9 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
           ),
           
           Expanded(
-            child: FutureBuilder<List<GoalLogModel>>(
-              future: _logsFuture,
+            // MENGGUNAKAN STREAM BUILDER AGAR LOG TABUNGAN REAL-TIME
+            child: StreamBuilder<List<GoalLogModel>>(
+              stream: _getLogsStream(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
                 final logs = snapshot.data ?? [];
@@ -319,7 +323,7 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
                 if (logs.isEmpty) {
                   return const Center(child: Text('Belum ada riwayat untuk target ini.', style: TextStyle(color: Colors.grey)));
                 }
-
+                
                 return ListView.builder(
                   padding: const EdgeInsets.all(20),
                   itemCount: logs.length,
