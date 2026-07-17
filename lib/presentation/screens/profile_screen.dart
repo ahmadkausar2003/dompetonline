@@ -105,7 +105,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 		final transactionState = ref.watch(transactionProvider);
 		final goalState = ref.watch(goalProvider);
 		
-		// --- CEK ROLE (Apakah yang login Admin?) ---
 		final authState = ref.watch(authProvider);
 		final isAdmin = authState.role == 'admin';
 		
@@ -141,7 +140,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 										alignment: Alignment.bottomRight,
 										children: [
 											GestureDetector(
-												// Kunci tap foto profil jika admin
 												onTap: isAdmin ? null : _pickProfileImage,
 												child: CircleAvatar(
 													radius: 50,
@@ -241,7 +239,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 						),
 						const SizedBox(height: 12),
 						
-						// --- SEMBUNYIKAN HAPUS DATA JIKA ADMIN ---
 						if (!isAdmin) ...[
 							_buildSettingsTile(
 								context: context,
@@ -361,7 +358,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 				return AlertDialog(
 					title: const Text('Peringatan!'),
 					content: const Text(
-						'Apakah kamu yakin ingin menghapus SELURUH data transaksi dan target tabungan? Data yang sudah dihapus tidak dapat dikembalikan.',
+						'Apakah kamu yakin ingin menghapus SELURUH data transaksi dan target tabungan dari Cloud? Data yang sudah dihapus tidak dapat dikembalikan.',
 					),
 					actions: [
 						TextButton(
@@ -371,14 +368,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 						FilledButton(
 							style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
 							onPressed: () async {
+								// Tembak Firestore untuk hapus semua transaksi dan tabungan
 								await ref.read(transactionProvider.notifier).clearAllData();
-								await ref.read(goalProvider.notifier).loadGoals();
+								await ref.read(goalProvider.notifier).clearAllGoals(); // <-- FUNGSI BARU DIPANGGIL DI SINI
 								
 								if (!context.mounted) return;
 								Navigator.pop(context);
 								ScaffoldMessenger.of(context).showSnackBar(
 									const SnackBar(
-										content: Text('Seluruh data berhasil dihapus.'),
+										content: Text('Seluruh data di Cloud berhasil dibersihkan!'),
 										backgroundColor: Color(0xFFEF4444),
 									),
 								);

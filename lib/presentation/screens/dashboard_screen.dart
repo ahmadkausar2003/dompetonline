@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../providers/transaction_provider.dart';
-import '../providers/auth_provider.dart'; // <-- IMPORT AUTH UNTUK CEK ROLE
+import '../providers/auth_provider.dart'; 
 import '../../data/models/transaction_model.dart';
 import 'transaction_screen.dart';
 
@@ -68,7 +68,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 							labelText: 'Nominal Saldo Saat Ini',
 							prefixText: 'Rp ',
 							border: OutlineInputBorder(),
-							helperText: 'Akan memperbarui Total Saldo Utama',
+							helperText: 'Akan memperbarui Total Saldo Utama secara langsung.',
 							helperMaxLines: 2,
 						),
 						validator: (value) {
@@ -127,7 +127,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 							labelText: 'Uang Cash di Dompet',
 							prefixText: 'Rp ',
 							border: OutlineInputBorder(),
-							helperText: 'Jika ingin "Tarik Tunai" dari Rekening, lebih baik gunakan form Tambah Transaksi dengan kategori "Uang Cash".',
+							// --- PERBAIKAN TEKS HELPER ---
+							helperText: 'Otomatis menyesuaikan saldo Rekening (layaknya Tarik/Setor Tunai) agar Total Saldo Utama tidak berubah.',
 							helperMaxLines: 4,
 						),
 						validator: (value) {
@@ -251,7 +252,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 		final authState = ref.watch(authProvider);
 		final theme = Theme.of(context);
 		
-		// --- CEK ROLE (Apakah yang login Admin?) ---
 		final isAdmin = authState.role == 'admin';
 		
 		return Scaffold(
@@ -340,7 +340,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 					),
 				),
 			),
-			// --- SEMBUNYIKAN TOMBOL TAMBAH JIKA ADMIN ---
 			floatingActionButton: isAdmin ? null : FloatingActionButton(
 				backgroundColor: theme.colorScheme.primary,
 				foregroundColor: Colors.white,
@@ -481,7 +480,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 												),
 												onPressed: onToggleHide,
 											),
-											// --- SEMBUNYIKAN IKON EDIT JIKA ADMIN ---
 											if (!isAdmin) ...[
 												const SizedBox(width: 8),
 												Icon(Icons.edit_rounded, color: Colors.grey.withValues(alpha: 0.5), size: 16),
@@ -803,7 +801,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 									
 									const SizedBox(height: 32),
 									
-									// --- SEMBUNYIKAN HAPUS JIKA ADMIN ---
 									if (isAdmin)
 										Container(
 											width: double.infinity,
