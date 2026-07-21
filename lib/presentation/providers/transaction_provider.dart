@@ -1,17 +1,24 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart'; // Tambahan untuk debugPrint
+import 'package:flutter/foundation.dart'; 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/transaction_model.dart';
+import '../../data/models/wallet_model.dart'; 
 import '../../data/firestore_service.dart';
 import 'auth_provider.dart'; 
 
 class TransactionState {
 	final List<TransactionModel> allTransactions;
 	final List<TransactionModel> recentTransactions;
-	final double mainBalance;   
-	final double bankBalance;   
-	final double cashBalance;   
+	
+	final List<WalletModel> wallets; 
+	final Map<String, double> ewalletBalances; 
+	
+	final double mainBalance;       
+	final double bankBalance;       
+	final double lockedBalance;     
+	final double cashBalance;       
+	
 	final double currentMonthIncome;
 	final double currentMonthExpense;
 	final bool isLoading;
@@ -28,8 +35,11 @@ class TransactionState {
 	const TransactionState({
 		this.allTransactions = const [],
 		this.recentTransactions = const [],
+		this.wallets = const [], 
+		this.ewalletBalances = const {}, 
 		this.mainBalance = 0.0,
 		this.bankBalance = 0.0,
+		this.lockedBalance = 0.0, 
 		this.cashBalance = 0.0,
 		this.currentMonthIncome = 0.0,
 		this.currentMonthExpense = 0.0,
@@ -46,8 +56,11 @@ class TransactionState {
 	TransactionState copyWith({
 		List<TransactionModel>? allTransactions,
 		List<TransactionModel>? recentTransactions,
+		List<WalletModel>? wallets,
+		Map<String, double>? ewalletBalances,
 		double? mainBalance,
 		double? bankBalance,
+		double? lockedBalance,
 		double? cashBalance,
 		double? currentMonthIncome,
 		double? currentMonthExpense,
@@ -63,8 +76,11 @@ class TransactionState {
 		return TransactionState(
 			allTransactions: allTransactions ?? this.allTransactions,
 			recentTransactions: recentTransactions ?? this.recentTransactions,
+			wallets: wallets ?? this.wallets,
+			ewalletBalances: ewalletBalances ?? this.ewalletBalances,
 			mainBalance: mainBalance ?? this.mainBalance,
 			bankBalance: bankBalance ?? this.bankBalance,
+			lockedBalance: lockedBalance ?? this.lockedBalance,
 			cashBalance: cashBalance ?? this.cashBalance,
 			currentMonthIncome: currentMonthIncome ?? this.currentMonthIncome,
 			currentMonthExpense: currentMonthExpense ?? this.currentMonthExpense,
@@ -83,11 +99,13 @@ class TransactionState {
 class TransactionNotifier extends Notifier<TransactionState> {
 	final FirestoreService _firestoreService = FirestoreService();
 	StreamSubscription? _transactionSubscription;
+	StreamSubscription? _walletSubscription; 
 	
 	@override
 	TransactionState build() {
 		final authState = ref.watch(authProvider);
 		_transactionSubscription?.cancel();
+		_walletSubscription?.cancel();
 		
 		if (authState.user != null) {
 			Future.microtask(() => _initCloudStream(authState.user!.uid, authState.role ?? 'student'));
@@ -108,6 +126,37 @@ class TransactionNotifier extends Notifier<TransactionState> {
 		
 		final uidFilter = (role == 'admin') ? null : uid;
 		
+		// 1. PANTAU DOMPET DIGITAL & SAPU BERSIH DUPLIKAT OTOMATIS
+		_walletSubscription = _firestoreService.getWalletsStream(uid: uidFilter).listen((walletsData) async {
+			if (walletsData.isEmpty && role != 'admin' && uidFilter != null) {
+				final defaults = [
+					WalletModel(uid: uidFilter, name: 'DANA', type: 'ewallet', isDefault: true),
+					WalletModel(uid: uidFilter, name: 'GoPay', type: 'ewallet', isDefault: true),
+					WalletModel(uid: uidFilter, name: 'OVO', type: 'ewallet', isDefault: true),
+					WalletModel(uid: uidFilter, name: 'ShopeePay', type: 'ewallet', isDefault: true, accountNumber: null), 
+				];
+				for (var w in defaults) {
+					await _firestoreService.addWallet(w);
+				}
+			} else {
+				// Pembersihan Dompet Duplikat Otomatis (Bug Fix)
+				final seen = <String>{};
+				final uniqueWallets = <WalletModel>[];
+				
+				for (var w in walletsData) {
+					final wName = w.name.toLowerCase();
+					if (seen.contains(wName) && w.id != null) {
+						await _firestoreService.deleteWallet(w.id!); // Hapus duplikat dari Cloud
+					} else {
+						seen.add(wName);
+						uniqueWallets.add(w);
+					}
+				}
+				state = state.copyWith(wallets: uniqueWallets);
+			}
+		});
+
+		// 2. PANTAU & KALKULASI SELURUH TRANSAKSI
 		_transactionSubscription = _firestoreService.getTransactionsStream(uid: uidFilter).listen((transactions) {
 			final now = DateTime.now();
 			final startOfMonth = DateTime(now.year, now.month, 1);
@@ -117,41 +166,59 @@ class TransactionNotifier extends Notifier<TransactionState> {
 			
 			double currentInc = 0.0;
 			double currentExp = 0.0;
-			double calcBank = 0.0; 
-			double calcCash = 0.0; 
+			
+			double cBank = 0.0; 
+			double cCash = 0.0; 
+			double cLocked = 0.0; 
+			Map<String, double> cEwallets = {}; 
 			
 			for (var tx in transactions) {
 				if (tx.date.isAfter(startOfMonth)) {
-					if (tx.type == 'income' && !tx.title.contains('Penyesuaian') && !tx.title.contains('Tarik Tunai') && !tx.title.contains('Setor Tunai')) {
+					if (tx.type == 'income' && !tx.title.contains('Penyesuaian') && !tx.title.contains('Tarik Saldo') && !tx.title.contains('Top Up') && !tx.title.contains('Tarik Tunai') && !tx.title.contains('Setor Tunai')) {
 						currentInc += tx.amount;
 					}
-					if (tx.type == 'expense' && !tx.title.contains('Penyesuaian') && !tx.title.contains('Tarik Tunai') && !tx.title.contains('Setor Tunai')) {
+					if (tx.type == 'expense' && !tx.title.contains('Penyesuaian') && !tx.title.contains('Tarik Saldo') && !tx.title.contains('Top Up') && !tx.title.contains('Tarik Tunai') && !tx.title.contains('Setor Tunai')) {
 						currentExp += tx.amount;
 					}
 				}
 				
-				// --- PERBAIKAN: Menambahkan Kurung Kurawal {} ---
-				if (tx.category.toLowerCase() == 'uang cash') {
-					if (tx.type == 'income') {
-						calcCash += tx.amount;
-					} else if (tx.type == 'expense') {
-						calcCash -= tx.amount;
+				String cat = tx.category.trim().toLowerCase();
+				
+				if (cat == 'tabungan') {
+					if (tx.type == 'expense') {
+						cLocked += tx.amount; 
+						cBank -= tx.amount;   
+					} else {
+						cLocked -= tx.amount; 
+						cBank += tx.amount;   
 					}
-				} else {
+				} 
+				else if (cat == 'uang cash') {
+					if (tx.type == 'income') cCash += tx.amount;
+					else cCash -= tx.amount;
+				} 
+				else if (['dana', 'gopay', 'ovo', 'shopeepay'].contains(cat) || state.wallets.any((w) => w.name.toLowerCase() == cat)) {
+					String wName = tx.category.trim(); 
 					if (tx.type == 'income') {
-						calcBank += tx.amount;
-					} else if (tx.type == 'expense') {
-						calcBank -= tx.amount;
+						cEwallets[wName] = (cEwallets[wName] ?? 0) + tx.amount;
+					} else {
+						cEwallets[wName] = (cEwallets[wName] ?? 0) - tx.amount;
 					}
+				} 
+				else {
+					if (tx.type == 'income') cBank += tx.amount;
+					else cBank -= tx.amount;
 				}
 			}
 			
 			state = state.copyWith(
 				allTransactions: transactions,
 				recentTransactions: recentTx,
-				bankBalance: calcBank, 
-				cashBalance: calcCash, 
-				mainBalance: calcBank + calcCash,
+				bankBalance: cBank, 
+				cashBalance: cCash, 
+				lockedBalance: cLocked, 
+				mainBalance: cBank + cLocked, 
+				ewalletBalances: cEwallets, 
 				currentMonthIncome: currentInc,
 				currentMonthExpense: currentExp,
 				isMainBalanceHidden: isMainHidden,
@@ -162,13 +229,14 @@ class TransactionNotifier extends Notifier<TransactionState> {
 				isLoading: false, 
 			);
 		}, onError: (error) {
-			debugPrint("🔥 STREAM TERPUTUS: $error"); // Perbaikan 'avoid_print'
+			debugPrint("🔥 STREAM TERPUTUS: $error");
 			state = state.copyWith(isLoading: false);
 		});
 	}
 	
 	void refD() {
 		_transactionSubscription?.cancel();
+		_walletSubscription?.cancel();
 	}
 	
 	Future<void> toggleMainBalanceHidden() async {
@@ -237,7 +305,51 @@ class TransactionNotifier extends Notifier<TransactionState> {
 		);
 		await _firestoreService.addTransaction(txBank);
 	}
+
+	// --- FUNGSI BARU (FIX): TOP UP E-WALLET DARI REKENING BEBAS ---
+	Future<void> updateEWalletBalance(WalletModel wallet, double newBalance) async {
+		final currentBalance = state.ewalletBalances[wallet.name] ?? 0.0;
+		final difference = newBalance - currentBalance;
+		if (difference == 0) return;
+		
+		final authState = ref.read(authProvider); 
+		final uid = authState.user?.uid ?? 'unknown';
+		
+		// 1. Catat ke E-Wallet
+		final txWallet = TransactionModel(
+			uid: uid,
+			title: difference > 0 ? 'Top Up ${wallet.name}' : 'Tarik Saldo dari ${wallet.name}',
+			amount: difference.abs(),
+			type: difference > 0 ? 'income' : 'expense',
+			category: wallet.name,
+			date: DateTime.now(),
+		);
+		await _firestoreService.addTransaction(txWallet);
+		
+		// 2. Potong/Tambah dari Rekening Bebas (Agar Saldo Asli Terkoneksi!)
+		final txBank = TransactionModel(
+			uid: uid,
+			title: difference > 0 ? 'Top Up ke ${wallet.name}' : 'Tarik Saldo dari ${wallet.name} ke Rekening',
+			amount: difference.abs(),
+			type: difference > 0 ? 'expense' : 'income',
+			category: 'Lainnya',
+			date: DateTime.now().add(const Duration(seconds: 1)),
+		);
+		await _firestoreService.addTransaction(txBank);
+	}
 	
+	Future<void> addWallet(WalletModel wallet) async {
+		await _firestoreService.addWallet(wallet);
+	}
+	
+	Future<void> updateWallet(WalletModel wallet) async {
+		await _firestoreService.updateWallet(wallet);
+	}
+	
+	Future<void> deleteWallet(String id) async {
+		await _firestoreService.deleteWallet(id);
+	}
+
 	Future<void> addCustomCategory(String categoryName, String type) async {
 		final prefs = await SharedPreferences.getInstance();
 		if (type == 'expense') {
@@ -269,7 +381,6 @@ class TransactionNotifier extends Notifier<TransactionState> {
 		try {
 			final authState = ref.read(authProvider); 
 			final txWithUid = transaction.copyWith(uid: authState.user?.uid ?? 'unknown');
-			
 			await _firestoreService.addTransaction(txWithUid);
 		} finally {
 			state = state.copyWith(isLoading: false);
@@ -302,7 +413,6 @@ class TransactionNotifier extends Notifier<TransactionState> {
 					await _firestoreService.deleteTransaction(tx.id!);
 				}
 			}
-			
 			final prefs = await SharedPreferences.getInstance();
 			await prefs.remove('custom_expense_cats');
 			await prefs.remove('custom_income_cats');

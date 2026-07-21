@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart'; 
 import 'package:firebase_core/firebase_core.dart'; // IMPORT FIREBASE
+import 'package:cloud_firestore/cloud_firestore.dart'; // <-- TAMBAHAN: IMPORT FIRESTORE
 
 import 'presentation/providers/theme_provider.dart';
 import 'presentation/providers/auth_provider.dart'; // IMPORT AUTH PROVIDER
@@ -15,6 +16,15 @@ void main() async {
   
   // INISIALISASI FIREBASE
   await Firebase.initializeApp();
+  
+  // --- MESIN OFFLINE (PENGGANTI SQLITE) DIAKTIFKAN DI SINI ---
+  // Firebase akan otomatis menyimpan data di memori HP saat tidak ada kuota, 
+  // lalu mengirimkannya ke awan saat kuota kembali!
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true, 
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+  );
+  // ------------------------------------------------------------
   
   // MENGHIDUPKAN KAMUS BAHASA INDONESIA UNTUK FORMAT TANGGAL (INTL)
   await initializeDateFormatting('id_ID', null);

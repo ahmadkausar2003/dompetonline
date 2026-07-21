@@ -2,16 +2,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'models/transaction_model.dart';
 import 'models/goal_model.dart';
+import 'models/wallet_model.dart'; // <-- TAMBAHAN: Import Model Wallet Baru
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   
+  // ==========================================
   // --- TRANSAKSI ---
-  // REVISI: Menggunakan "Mode Detektif" dengan print debug untuk melacak UID dan data Firebase
+  // ==========================================
   Stream<List<TransactionModel>> getTransactionsStream({String? uid}) {
     if (kDebugMode) {
-      print("DEBUG: Mencari data untuk UID: $uid");
-    } // Kita akan lihat ini di terminal
+      print("DEBUG: Mencari data transaksi untuk UID: $uid");
+    } 
     Query query = _db.collection('transactions');
     
     if (uid != null) {
@@ -20,8 +22,8 @@ class FirestoreService {
     
     return query.snapshots().map((snapshot) {
       if (kDebugMode) {
-        print("DEBUG: Jumlah data ditemukan: ${snapshot.docs.length}");
-      } // Lihat apakah Firebase mengirim data
+        print("DEBUG: Jumlah transaksi ditemukan: ${snapshot.docs.length}");
+      }
       final list = snapshot.docs
           .map((doc) => TransactionModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
           .toList();
@@ -45,7 +47,9 @@ class FirestoreService {
     await _db.collection('transactions').doc(id).delete();
   }
   
+  // ==========================================
   // --- TARGET TABUNGAN ---
+  // ==========================================
   Stream<List<GoalModel>> getGoalsStream({String? uid}) {
     Query query = _db.collection('goals');
     if (uid != null) {
@@ -66,5 +70,40 @@ class FirestoreService {
   
   Future<void> deleteGoal(String id) async {
     await _db.collection('goals').doc(id).delete();
+  }
+
+  // ==========================================
+  // --- DOMPET DIGITAL (WALLET) ---
+  // ==========================================
+  Stream<List<WalletModel>> getWalletsStream({String? uid}) {
+    if (kDebugMode) {
+      print("DEBUG: Mencari data dompet digital untuk UID: $uid");
+    }
+    Query query = _db.collection('wallets');
+    
+    if (uid != null) {
+      query = query.where('uid', isEqualTo: uid);
+    }
+    
+    return query.snapshots().map((snapshot) {
+      if (kDebugMode) {
+        print("DEBUG: Jumlah dompet digital ditemukan: ${snapshot.docs.length}");
+      }
+      return snapshot.docs
+          .map((doc) => WalletModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+          .toList();
+    });
+  }
+  
+  Future<void> addWallet(WalletModel wallet) async {
+    await _db.collection('wallets').add(wallet.toMap());
+  }
+  
+  Future<void> updateWallet(WalletModel wallet) async {
+    await _db.collection('wallets').doc(wallet.id).update(wallet.toMap());
+  }
+  
+  Future<void> deleteWallet(String id) async {
+    await _db.collection('wallets').doc(id).delete();
   }
 }
